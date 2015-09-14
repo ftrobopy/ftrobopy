@@ -1,1 +1,17 @@
 ftrobopy - a python module for the fischertechnik TXT controller
+
+Python Modul zur Ansteuerung des fischertechnik TXT Controllers ueber ein Python-Programm
+=========================================================================================
+
+Das (import-) Modul kann von allen Plattformen und mit allen Betriebssystemen genutzt werden,
+die Python2.7 und POSIX Sockets unterstuetzen. Dazu gehoeren z.B. Linux und Mac OS X Systeme.
+Grundsaetzlich kann das Modul auch an Windows angepasst werden, dies setzt jedoch eine
+Python-Installation mit funktionierenden Sockets voraus.
+
+ftrobopy.py           # Dies ist das Modul
+manual.pdf            # Eine Beschreibung aller Klassen und Methoden
+SimpleDemoExplorer.py # Eine kleine Demo Anwendung
+
+Entweder wird die Datei ftrobopy.py in das site-packages Verzeichnis des Systems kopiert,
+damit sie automatisch gefunden wird oder man kopiert die Datei in das gleiche Verzeichnis
+in dem man auch seine Python-Programme zur Steuerung des TXT hat.
