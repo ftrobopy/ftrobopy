@@ -54,7 +54,7 @@ class ftTXT(object):
         + ``C_ANALOG     = 0`` *Eingang wird analog verwendet*
         + ``C_DIGITAL    = 1`` *Eingang wird digital verwendet*
         + ``C_OUTPUT     = 0`` *Ausgang (O1-O8) wird zur Ansteuerung z.B. einer Lampe verwendet*
-        + ``C_MOTOR      = 0`` *Ausgang (M1-M4) wird zur Ansteuerung eines Motors verwendet*
+        + ``C_MOTOR      = 1`` *Ausgang (M1-M4) wird zur Ansteuerung eines Motors verwendet*
   """
   
   C_VOLTAGE    = 0
@@ -65,7 +65,7 @@ class ftTXT(object):
   C_ANALOG     = 0
   C_DIGITAL    = 1
   C_OUTPUT     = 0
-  C_MOTOR      = 0
+  C_MOTOR      = 1
 
   def __init__(self, host, port):
     """
