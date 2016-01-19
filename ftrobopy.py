@@ -539,6 +539,7 @@ class ftTXT(object):
       response_id, = struct.unpack(fstr, data)
     if response_id != m_resp_id:
       print('WARNING: ResponseID ', hex(response_id),' of stopCameraOnline command does not match')
+    self._camera_already_running = False
     return
 
   def getCameraFrame(self):
