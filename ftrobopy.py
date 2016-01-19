@@ -93,7 +93,6 @@ class ftTXT(object):
       >>> import ftrobopy
       >>> txt = ftrobopy.ftTXT('192.168.7.2', 65000)
     """
-    self._is_initialized = False
     self._camera_already_running = False
     self._m_devicename = b''
     self._m_version    = b''
@@ -113,6 +112,7 @@ class ftTXT(object):
     self._update_timer  = time.time()
     self._sound_timer   = self._update_timer
     self._sound_length  = 0
+    self._is_online = False
     self._config_id            = 0
     self._m_extension_id       = 0
     self._ftX1_pgm_state_req   = 0
@@ -150,7 +150,6 @@ class ftTXT(object):
     self._current_sound_cmd_id   = 0
     self._current_ir             = range(26)
     self._exchange_data_lock.release() 
-    self._is_initialized = True
 
   def queryStatus(self):
     """
@@ -237,6 +236,9 @@ class ftTXT(object):
 
        >>> txt.startOnline()
     """
+    if self._is_online:
+      return
+    self._is_online = True
     m_id       = 0x163FF61D
     m_resp_id  = 0xCA689F75
     buf        = struct.pack('<I64s', m_id,b'')
@@ -270,7 +272,7 @@ class ftTXT(object):
 
        >>> txt.stopOnline()
     """
-    if not self._is_initialized:
+    if not self._is_online:
       return None
     self._txt_stop_event.set()
     self._txt_keep_connection_stop_event.set()
@@ -287,6 +289,7 @@ class ftTXT(object):
       response_id, = struct.unpack(fstr, data)
     if response_id != m_resp_id:
       print('WARNING: ResponseID ', hex(response_id), ' of stopOnline command does not match')
+    self._is_online = False;
     return None
 
   def setConfig(self, M, I):
