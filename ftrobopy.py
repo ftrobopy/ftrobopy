@@ -256,10 +256,6 @@ class ftTXT(object):
     self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
     self._txt_thread.setDaemon(True)
     self._txt_thread.start()
-    self._txt_keep_connection_stop_event = threading.Event()
-    self._txt_keep_connection_thread = ftTXTKeepConnection(self, keep_connection_interval, self._txt_keep_connection_stop_event)
-    self._txt_keep_connection_thread.setDaemon(True)
-    self._txt_keep_connection_thread.start()
     return None
 
   def stopOnline(self):
@@ -275,7 +271,6 @@ class ftTXT(object):
     if not self._is_online:
       return None
     self._txt_stop_event.set()
-    self._txt_keep_connection_stop_event.set()
     m_id       = 0x9BE5082C
     m_resp_id  = 0xFBF600D2
     buf        = struct.pack('<I', m_id)
@@ -1165,49 +1160,6 @@ class ftTXT(object):
       Anwendungsbeispiel siehe SyncDataBegin()
     """
     self._exchange_data_lock.release()
-
-class ftTXTKeepConnection(threading.Thread):
-  """
-  Thread zur Aufrechterhaltung der Verbindung zwischen dem TXT und einem Computer
-  Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
-  """
-  def __init__(self, txt, maxtime, stop_event):
-    threading.Thread.__init__(self)
-    self._txt            = txt
-    self._txt_maxtime    = maxtime
-    self._txt_stop_event = stop_event
-    return
-
-  def run(self):
-    while not self._txt_stop_event.is_set():
-      try:
-        self._txt._keep_running_lock.acquire()
-        o_time = self._txt._update_timer
-        self._txt._keep_running_lock.release()
-        m_time=time.time()-o_time
-        if (m_time > self._txt_maxtime):
-          m_id         = 0xDC21219A
-          m_resp_id    = 0xBAC9723E
-          buf          = struct.pack('<I', m_id)
-          self._txt._keep_running_lock.acquire()
-          res          = self._txt._sock.send(buf)
-          data         = self._txt._sock.recv(512)
-          self._txt._update_timer = time.time()
-          self._txt._keep_running_lock.release()
-          fstr         = '<I16sI'
-          response_id  = 0
-          if len(data) == struct.calcsize(fstr):
-            response_id, m_devicename, m_version = struct.unpack(fstr, data)
-          else:
-            m_devicename = ''
-            m_version    = ''
-          if response_id != m_resp_id:
-            print('ResponseID ', hex(response_id),'of keep connection queryStatus command does not match')
-            self._txt_stop_event.set()
-        time.sleep(1.0)
-      except:
-        return
-    return
 
 class ftTXTexchange(threading.Thread):
   """
