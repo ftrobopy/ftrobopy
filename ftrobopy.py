@@ -108,7 +108,7 @@ class ftTXT(object):
     self._sock.setblocking(1)
     self._exchange_data_lock = threading.RLock()
     self._camera_data_lock   = threading.Lock()
-    self._keep_running_lock  = threading.Lock()
+    self._socket_lock  = threading.Lock()
     self._update_timer  = time.time()
     self._sound_timer   = self._update_timer
     self._sound_length  = 0
@@ -166,10 +166,10 @@ class ftTXT(object):
     m_id         = 0xDC21219A
     m_resp_id    = 0xBAC9723E
     buf          = struct.pack('<I', m_id)
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res          = self._sock.send(buf)
     data         = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr         = '<I16sI'
     response_id  = 0
     if len(data) == struct.calcsize(fstr):
@@ -242,10 +242,10 @@ class ftTXT(object):
     m_id       = 0x163FF61D
     m_resp_id  = 0xCA689F75
     buf        = struct.pack('<I64s', m_id,b'')
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res        = self._sock.send(buf)
     data       = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr       = '<I'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -274,10 +274,10 @@ class ftTXT(object):
     m_id       = 0x9BE5082C
     m_resp_id  = 0xFBF600D2
     buf        = struct.pack('<I', m_id)
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res        = self._sock.send(buf)
     data       = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr       = '<I'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -397,10 +397,10 @@ class ftTXT(object):
     fields += self._ftX1_cnt
     fields += self._ftX1_motor_config
     buf = struct.pack('<Ihh B B 2s BBBB BB2s BB2s BB2s BB2s BB2s BB2s BB2s BB2s B3s B3s B3s B3s 16h', *fields)
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res = self._sock.send(buf)
     data = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr    = '<I'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -433,10 +433,10 @@ class ftTXT(object):
     fields += [self._sound, self._sound_index, self._sound_repeat,0,0]
     self._exchange_data_lock.release()
     buf = struct.pack('<I8h4h4h4h4hHHHbb', *fields)
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res = self._sock.send(buf)
     data = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr    = '<I8h4h4h4h4hH4bB4bB4bB4bB4bBb'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -496,10 +496,10 @@ class ftTXT(object):
                                      self._m_height,
                                      self._m_framerate,
                                      self._m_powerlinefreq)
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res        = self._sock.send(buf)
     data       = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr       = '<I'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -527,10 +527,10 @@ class ftTXT(object):
     m_id                 = 0x17C31F2F
     m_resp_id            = 0x4B3C1EB6
     buf        = struct.pack('<I', m_id)
-    self._keep_running_lock.acquire()
+    self._socket_lock.acquire()
     res        = self._sock.send(buf)
     data       = self._sock.recv(512)
-    self._keep_running_lock.release()
+    self._socket_lock.release()
     fstr       = '<I4'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -1198,11 +1198,11 @@ class ftTXTexchange(threading.Thread):
         fields += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat,0,0]
         self._txt._exchange_data_lock.release()
         buf = struct.pack('<I8h4h4h4h4hHHHbb', *fields)
-        self._txt._keep_running_lock.acquire()
+        self._txt._socket_lock.acquire()
         res = self._txt._sock.send(buf)
         data = self._txt._sock.recv(512)
         self._txt._update_timer = time.time()
-        self._txt._keep_running_lock.release()
+        self._txt._socket_lock.release()
         fstr    = '<I8h4h4h4h4hH4bB4bB4bB4bB4bBb'
         response_id = 0
         if len(data) == struct.calcsize(fstr):
