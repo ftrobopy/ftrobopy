@@ -1286,7 +1286,7 @@ class camera(threading.Thread):
           if self._total_bytes_read == ds_size:
             response = struct.unpack(fstr, data)
             if response[0] != m_id:
-              print('WARNING: ResponseID ', hex(response_id),' of cameraOnlineFrame command does not match')
+              print('WARNING: ResponseID ', hex(response[0]),' of cameraOnlineFrame command does not match')
             self._m_numframesready      = response[1]
             self._m_framewidth          = response[2]
             self._m_frameheight         = response[3]
