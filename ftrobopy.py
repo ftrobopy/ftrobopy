@@ -37,6 +37,11 @@ def version():
   """
   return __version__
 
+
+def default_error_handler(message, exception):
+  print(message)
+  return False
+
 class ftTXT(object):
   """
     Basisklasse zum fischertechnik TXT Computer.
@@ -67,7 +72,7 @@ class ftTXT(object):
   C_OUTPUT     = 0
   C_MOTOR      = 1
 
-  def __init__(self, host, port):
+  def __init__(self, host, port, on_error=default_error_handler):
     """
       Initialisierung der ftTXT Klasse:
 
@@ -86,6 +91,10 @@ class ftTXT(object):
       :param port: Portnummer (normalerweise 65000)
       :type port: integer
 
+      :param on_error: Errorhandler fuer Fehler bei der Kommunikation mit dem Controller (optional)
+      :type port: function(str, Exception) -> bool
+
+
       :return: Leer
 
       Anwedungsbeispiel:
@@ -98,12 +107,10 @@ class ftTXT(object):
     self._m_version    = b''
     self._host=host
     self._port=port
+    self.handle_error=on_error
     self._sock=socket.socket()
-    try:
-      self._sock.connect((self._host, self._port))
-    except:
-      print('Connection to ', host, ':',port,' failed.')
-      sys.exit()
+    self._sock.settimeout(5)
+    self._sock.connect((self._host, self._port))
     self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self._sock.setblocking(1)
     self._exchange_data_lock = threading.RLock()
@@ -176,7 +183,7 @@ class ftTXT(object):
       response_id, m_devicename, m_version = struct.unpack(fstr, data)
     else:
       m_devicename = ''
-      m_version    = ''
+      m_version    = 0
     if response_id != m_resp_id:
       print('WARNING: ResponseID ', hex(response_id),'of queryStatus command does not match')
     self._m_devicename = m_devicename.decode('utf-8').strip('\x00')
@@ -449,7 +456,7 @@ class ftTXT(object):
       print('WARNING: ResponseID ', hex(response_id),' of exchangeData command does not match')
     else:
       m_exchange_ok = True
-    self._exchange_data_lock.acquire()
+    self._exchange_data.lock_acquire()
     self._current_input          = response[1:9]
     self._current_counter        = response[9:13]
     self._current_counter_value  = response[13:17]
@@ -1227,7 +1234,10 @@ class ftTXTexchange(threading.Thread):
         self._txt._current_sound_cmd_id   = response[25]
         self._txt._current_ir             = response[26:52]
         self._txt._exchange_data_lock.release()
-      except:
+      except Exception as err:
+        if not self._txt.handle_error('', err):
+          print('Connection to TXT aborted')
+        self._txt_stop_event.set()
         return
     return
 
