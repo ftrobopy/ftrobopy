@@ -4,13 +4,13 @@ Python Modul zur Ansteuerung des fischertechnik TXT Controllers ueber ein Python
 =========================================================================================
 
 Das (import-) Modul kann von allen Plattformen und mit allen Betriebssystemen genutzt werden,
-die Python2.7 und POSIX Sockets unterstuetzen. Dazu gehoeren z.B. Linux und Mac OS X Systeme.
-Grundsaetzlich kann das Modul auch an Windows angepasst werden, dies setzt jedoch eine
-Python-Installation mit funktionierenden Sockets voraus.
+die Python2.7 oder Python 3.x und POSIX Sockets unterstuetzen. Dazu gehoeren z.B. Linux und Mac OS X Systeme.
+Das Modul kann auch unter Windows verwendet werden, wurde dort jedoch nicht ausfuehrlich getestet.
 
 ftrobopy.py           # Dies ist das Modul
 manual.pdf            # Eine Beschreibung aller Klassen und Methoden
 SimpleDemoExplorer.py # Eine kleine Demo Anwendung
+SimpleCameraDemo.py   # Eine einfache Demo, wie die Camera des TXT verwendet werden kann
 
 Entweder wird die Datei ftrobopy.py in das site-packages Verzeichnis des Systems kopiert,
 damit sie automatisch gefunden wird oder man kopiert die Datei in das gleiche Verzeichnis
