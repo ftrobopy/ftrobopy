@@ -1604,15 +1604,20 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
   struct v4l2_buffer buf = {0};
   unsigned int imgwidth, imgheight;
   unsigned int xtopleft, ytopleft, xbottomright, ybottomright;
-  unsigned int ave_red, ave_green, ave_blue;
   unsigned int i, j;
   unsigned int rwidth, rheight, pixelcount;
   int err;
   int showImage;
   unsigned char *ret_buf;
-  unsigned char *rgbp1  = NULL;
-  unsigned char *rgbp2 = NULL;
+  unsigned char *rgbp   = NULL;
+  unsigned char *bwimg  = NULL;
+  unsigned char *bwp    = NULL;
+  unsigned char *blrimg = NULL;
+  unsigned char *blrp   = NULL;
   int ret_size;
+  int a0, b1, b2, b3, b4, c1, c2, c3, c4;
+  float n1, n2, n3, n4, n5, n6, n7, n8, e;
+  unsigned int gradbw;
   
   if (!PyArg_ParseTuple(args, "IIIIIIII", &videv, &imgwidth, &imgheight, &xtopleft, &ytopleft, &xbottomright, &ybottomright, &showImage))
     return NULL;
@@ -1625,8 +1630,8 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     FD_ZERO(&fds);
     FD_SET(videv, &fds);
     
-    // set timeout of 3 seconds
-    tv.tv_sec = 3;
+    // set timeout of 2 seconds
+    tv.tv_sec = 2;
     r0 = select(videv+1, &fds, NULL, NULL, &tv);
     if(r0 == -1) {
       if (EINTR == errno)
@@ -1663,9 +1668,6 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     
   }
   
-  ave_red    = 0;
-  ave_green  = 0;
-  ave_blue   = 0;
   pixelcount = 0;
   
   if (buffers[buf.index].length > 0) {
@@ -1706,7 +1708,7 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     
     ret_buf    = njGetImage();
     ret_size   = njGetImageSize();
-    
+
     if (ret_size != (int)(imgheight * imgwidth) *3) {
       njDone();
       struct module_state *st = GETSTATE(self);
@@ -1722,25 +1724,108 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     
     rwidth  = xbottomright - xtopleft;
     rheight = ybottomright - ytopleft;
-    
-    rgbp1 = ret_buf + (imgwidth * ytopleft     + xtopleft) * 3;
-    rgbp2 = ret_buf + (imgwidth * (ytopleft+1) + xtopleft) * 3;
-    pixelcount = (rwidth-1) * (rheight-1);
-    for (i=0; i<rheight-1; i++) {
-      for (j=0; j<rwidth-6; j++) {
-        ave_red   += abs(rgbp1[0] - rgbp1[3]) + abs(rgbp1[0] - rgbp2[0]) + abs(rgbp1[0] - rgbp2[3]);
-        ave_green += abs(rgbp1[1] - rgbp1[4]) + abs(rgbp1[1] - rgbp2[1]) + abs(rgbp1[1] - rgbp2[4]);
-        ave_blue  += abs(rgbp1[2] - rgbp1[5]) + abs(rgbp1[2] - rgbp2[2]) + abs(rgbp1[2] - rgbp2[5]);
-        rgbp1     += 3;
-        rgbp2     += 3;
+
+    if (!(bwimg = malloc(rwidth*rheight))) {
+      struct module_state *st = GETSTATE(self);
+      PyErr_SetString(st->error, "error out of memory in measureContrast\n");
+      return NULL;
+    };
+
+    // convert RGB to B/W image
+    rgbp = ret_buf + (imgwidth * ytopleft + xtopleft) * 3;
+    bwp   = bwimg;
+    for (i=0; i<rheight; i++) {
+      for (j=0; j<rwidth; j++) {
+        *bwp   = (rgbp[0] + rgbp[1] + rgbp[2]) / 3;
+        rgbp += 3;
+        bwp++;
       }
-      rgbp1 += (imgwidth - rwidth) * 3;
-      rgbp2 += (imgwidth - rwidth) * 3;
+      rgbp += (imgwidth - rwidth) * 3;
+    }
+
+    if (!(blrimg = malloc(rwidth*rheight))) {
+      struct module_state *st = GETSTATE(self);
+      PyErr_SetString(st->error, "error out of memory in measureContrast\n");
+      return NULL;
+    };
+    // blur (simplified gaussian blur) to denoise image
+    bwp  = bwimg;
+    blrp = blrimg;
+    for (j=0; j<rwidth; j++) {
+      *blrp = *bwp;
+      blrp++; bwp++;
+    }
+
+    for (i=1; i<rheight-1; i++) {
+      *blrp = *bwp;
+      blrp++; bwp++;
+      for (j=1; j<rwidth-1; j++) {
+        a0 = bwp[0];
+        b1 = bwp[-1];
+        b2 = bwp[1];
+        b3 = bwp[-rwidth];
+        b4 = bwp[rwidth];
+        c1 = bwp[-1-rwidth];
+        c2 = bwp[+1-rwidth];
+        c3 = bwp[-1+rwidth];
+        c4 = bwp[+1+rwidth];
+        n1 = 1.0 / (1 + (a0-b1)*(a0-b1) );
+        n2 = 1.0 / (1 + (a0-b2)*(a0-b2) );
+        n3 = 1.0 / (1 + (a0-b3)*(a0-b3) );
+        n4 = 1.0 / (1 + (a0-b4)*(a0-b4) );
+        n5 = 0.8 / (1 + (a0-c1)*(a0-c1) );
+        n6 = 0.8 / (1 + (a0-c2)*(a0-c2) );
+        n7 = 0.8 / (1 + (a0-c3)*(a0-c3) );
+        n8 = 0.8 / (1 + (a0-c4)*(a0-c4) );
+        e  = (n1*b1 + n2*b2 + n3*b3 + n4*b4 + n5*c1 + n6*c2 + n7*c3 + n8*c4) / (n1+n2+n3+n4+n5+n6+n7+n8);
+        if (e<0) {
+          *blrp = 0;
+        } else {
+          if (e > 255) {
+            *blrp = 255;
+          } else {
+            *blrp = (unsigned char) e;
+          }
+        }
+        blrp++; bwp++;
+      }
+      *blrp = *bwp;
+      blrp++; bwp++;
     }
     
+    for (j=0; j<rwidth; j++) {
+      *blrp = *bwp;
+      blrp++; bwp++;
+    }
+
+    blrp       = blrimg+1+rwidth;
+    pixelcount = (rwidth-1) * (rheight-1);
+    gradbw     = 0;
+    for (i=1; i<rheight-1; i++) {
+      for (j=1; j<rwidth-1; j++) {
+        gradbw += abs(blrp[0] - blrp[-rwidth]);
+        gradbw += abs(blrp[0] - blrp[+rwidth]);
+        gradbw += abs(blrp[0] - blrp[-1]);
+        gradbw += abs(blrp[0] - blrp[+1]);
+        blrp++;
+      }
+      blrp += 2;
+    }
+
     if (showImage == 1 && ret_buf != NULL) {
       display_rgb(ret_buf, imgwidth, imgheight);
     }
+
+    if (bwimg) {
+      free(bwimg);
+      bwimg = NULL;
+    }
+    
+    if (blrimg) {
+      free(blrimg);
+      blrimg = NULL;
+    }
+
     njDone();
   }
   
@@ -1749,8 +1834,9 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     PyErr_SetString(st->error, "error video buffer in measureContrast\n");
     return NULL;
   }
+  
   if (pixelcount > 0) {
-    return Py_BuildValue("I", ave_red*4/pixelcount + ave_green*4/pixelcount + ave_blue*4/pixelcount);
+    return Py_BuildValue("I", gradbw/pixelcount);
   } else {
     Py_INCREF(Py_None);
     return Py_None;
