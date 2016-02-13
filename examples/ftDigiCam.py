@@ -20,7 +20,6 @@ txt = ftrobopy.ftrobopy(host                     ='127.0.0.1',
                         update_interval          = 0.01,
                         keep_connection_interval = 1.0)
 
-run_ave_contrast   = 8
 hist_minlength     = 10
 hist_maxlength     = 20
 fname_prefix       = 'PICT'
@@ -50,44 +49,42 @@ try:
     # reset text/cmd console (compromized by SDL)
     system('reset')
 
-  contrast                = [0]
+  contrast                = 0
   hist_contrast           = [0]
   hist_counter            = [0]
-  contrast_counter_shift  = 3
   ave_contrast            = 0
+  counter_hist_shift      = 2
 
-  xtopleft     = 10 # width / 2  - width / 4
-  ytopleft     = 10 # height / 2 - height / 8
-  xbottomright = 310 # width / 2  + width / 8
-  ybottomright = 120 # height / 2 + height / 8
+  xtopleft     =  width / 2  - width / 8
+  ytopleft     =  height / 2 - height / 8
+  xbottomright =  width / 2  + width / 8
+  ybottomright =  height / 2 + height / 8
   
   state = 0
   dir   = -1
   
   for i in range(1000):
-    contr = ftrobopytools.measureContrast(videv,
+    contrast = ftrobopytools.measureContrast(videv,
                                           width, height,
                                           xtopleft, ytopleft, xbottomright, ybottomright,
                                           displayLiveStream)
-    if contr:
-      contrast.append(contr)                                                                                       
-      if len(contrast) > run_ave_contrast:
-        contrast = contrast[1:]
 
-    ave_contrast  = sum(contrast)/len(contrast)
     motor_counter = FocusMotor.getCurrentDistance()
-    contrast_variation = 0
-    for i in contrast:
-      if i != ave_contrast:
-        contrast_variation = 1
-    
-    hist_contrast.append(ave_contrast)
+
+    hist_contrast.append(contrast)
     if len(hist_contrast) > hist_maxlength:
       hist_contrast = hist_contrast[1:]
     
     hist_counter.append(motor_counter)
     if len(hist_counter) > hist_maxlength:
       hist_counter = hist_counter[1:]
+
+    max_contrast       = max(hist_contrast)
+    contrast_variation = 0
+    for i in hist_contrast:
+      if i != max_contrast:
+        contrast_variation = 1
+        break 
 
     #if state == 2 or state == 3 or state == 4:
     if True:
@@ -125,9 +122,11 @@ try:
         FocusMotor.stop()
         # increase focus to maximum contrast
         idx               = hist_contrast.index(max(hist_contrast))
-        bestfocus_counter = hist_counter[idx]
-        #FocusMotor.setDistance(hist_counter[-(1+contrast_counter_shift)] - bestfocus_counter)
-        FocusMotor.setDistance(300)
+        print("index of highest contrast is ",idx)
+        print(hist_counter)
+        bestfocus_counter = hist_counter[idx-counter_hist_shift]
+        print("FocusMotor.setDistance: ",abs(hist_counter[-1]-bestfocus_counter))
+        FocusMotor.setDistance(abs(hist_counter[-1]-bestfocus_counter))
         FocusMotor.setSpeed(512*dir)
         state = 4
 
@@ -143,7 +142,7 @@ try:
         high_height  = 720  # 720 is the maximum vertical resolution of the TXT camera
         videv = ftrobopytools.camInit(high_fps, high_width, high_height, 0, 0)
         # get high resolution snapshot as jpg image
-        jpg   = ftrobopytools.getJPGImage(videv)
+        jpg   = ftrobopytools.getJPEGImage(videv)
         # close (high resolution) camera device
         ftrobopytools.camClose(videv, 0)
         # restore resolution for liveStreaming
