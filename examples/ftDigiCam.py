@@ -1,11 +1,11 @@
-######################################
+#######################################
 # Example: ftDigiCam.py
 #          Digital Camera with live
 #          video stream to TXT display
 #          and autofocus functionality
 #          (c) 2016 by Torsten Stuehn
-#          version 0.8 from 2016-02-12
-######################################
+#          version 0.81 from 2016-02-19
+#######################################
 
 # Python2/3 'print' compatibility
 from __future__ import print_function
@@ -21,13 +21,16 @@ txt = ftrobopy.ftrobopy(host                     ='127.0.0.1',
                         keep_connection_interval = 1.0)
 
 hist_minlength     = 10
-hist_maxlength     = 20
+hist_maxlength     = 30
 fname_prefix       = 'PICT'
 displayLiveStream  = 1 # live video on TXT display, 0=no 1=yes
 
 # definition of TXT outputs and inputs
 FocusMotor       = txt.motor(1) # the focus motor is connected to M1
-Switch           = txt.input(1) # the switch is connected to I1
+Trigger          = txt.input(1) # the camera trigger with auto focus is connected to I1
+ManualFocus1     = txt.input(2) # manual focus1 connected to I2
+ManualFocus2     = txt.input(3) # manual focus2 connected to I3
+ManualTrigger    = txt.input(4) # the camera trigger without auto focus is connected to I4
 
 if displayLiveStream:
   # make backup copy of TXT display contents
@@ -53,7 +56,7 @@ try:
   hist_contrast           = [0]
   hist_counter            = [0]
   ave_contrast            = 0
-  counter_hist_shift      = 2
+  counter_hist_shift      = 1
 
   xtopleft     =  width / 2  - width / 8
   ytopleft     =  height / 2 - height / 8
@@ -62,13 +65,16 @@ try:
   
   state = 0
   dir   = -1
+
+  ManualFocus1_prev = 0
+  ManualFocus2_prev = 0
   
   for i in range(1000):
     contrast = ftrobopytools.measureContrast(videv,
                                           width, height,
                                           xtopleft, ytopleft, xbottomright, ybottomright,
                                           displayLiveStream)
-
+    # print(ftrobopytools.sdlPollEvent())
     motor_counter = FocusMotor.getCurrentDistance()
 
     hist_contrast.append(contrast)
@@ -86,18 +92,40 @@ try:
         contrast_variation = 1
         break 
 
-    #if state == 2 or state == 3 or state == 4:
-    if True:
-      print(hist_contrast)
-      #print(hist_counter)
+    if ManualTrigger.state() != 0:
+      FocusMotor.stop()
+      state = 4
 
+    if ManualFocus1.state() != 0 and ManualFocus1_prev == 0 and ManualFocus2.state() == 0:
+      FocusMotor.stop()
+      FocusMotor.setDistance(1000)
+      FocusMotor.setSpeed(512*dir)
+      state = 0
+      ManualFocus1_prev = 1
+
+    if ManualFocus2.state() != 0 and ManualFocus2_prev == 0 and ManualFocus1.state() == 0:                                        
+      FocusMotor.stop()                                                                                
+      FocusMotor.setDistance(1000)                                                                       
+      FocusMotor.setSpeed(-512*dir)                                                                     
+      state = 0
+      ManualFocus2_prev = 1
+
+    if ManualFocus1.state() == 0 and ManualFocus1_prev == 1 and ManualFocus2.state() == 0:
+      FocusMotor.stop()                                                                   
+      state = 0
+      ManualFocus1_prev = 0
+
+    if ManualFocus2.state() == 0 and ManualFocus2_prev == 1 and ManualFocus1.state() == 0:
+      FocusMotor.stop()                                                                   
+      state = 0                                                                           
+      ManualFocus2_prev = 0
+                                                                                                       
     if state == 0:
-      if Switch.state() != 0:
-        # dir    = -dir
+      if Trigger.state() != 0:
         state  = 1
 
     if state == 1:
-      print("state 1: start focus motor")
+      #print("state 1: start focus motor")
       # start increasing focus
       FocusMotor.setDistance(3000)
       FocusMotor.setSpeed(512*dir)
@@ -107,7 +135,7 @@ try:
 
     if state == 2:
       if len(hist_contrast) > hist_minlength and ( hist_contrast[-1] < hist_contrast[-2] or contrast_variation == 0 ):
-        print("state 2: contrast_variation",contrast_variation)
+        #print("state 2: contrast_variation",contrast_variation)
         hist_contrast = [0]
         hist_counter  = [0]
         FocusMotor.stop()
@@ -118,14 +146,14 @@ try:
 
     if state == 3:
       if len(hist_contrast) > hist_minlength and ( hist_contrast[-1] < hist_contrast[-2] or contrast_variation == 0 ):
-        print("state 3: contrast_variation",contrast_variation)
+        #print("state 3: contrast_variation",contrast_variation)
         FocusMotor.stop()
         # increase focus to maximum contrast
         idx               = hist_contrast.index(max(hist_contrast))
-        print("index of highest contrast is ",idx)
-        print(hist_counter)
+        #print("index of highest contrast is ",idx)
+        #print(hist_counter)
         bestfocus_counter = hist_counter[idx-counter_hist_shift]
-        print("FocusMotor.setDistance: ",abs(hist_counter[-1]-bestfocus_counter))
+        #print("FocusMotor.setDistance: ",abs(hist_counter[-1]-bestfocus_counter))
         FocusMotor.setDistance(abs(hist_counter[-1]-bestfocus_counter))
         FocusMotor.setSpeed(512*dir)
         state = 4
@@ -133,7 +161,7 @@ try:
     if state == 4:
       if FocusMotor.finished():
         # save jpeg in high resolution (1280x720)
-        print("taking snapshot at high resolution ...")
+        #print("taking snapshot at high resolution ...")
         # close (low resolution) camera device
         ftrobopytools.camClose(videv, 0)
         # open (high resolution) camera device
