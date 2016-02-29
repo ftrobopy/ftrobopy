@@ -754,20 +754,25 @@ static PyObject *ftrobopytools_camInit(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_camClose(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_sdlInit(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_sdlClose(PyObject *self, PyObject *args);
+static PyObject *ftrobopytools_sdlPollEvent(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_getJPEGImage(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_detectLines(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_measureRGBColor(PyObject *self, PyObject *args);
 static PyObject *ftrobopytools_measureContrast(PyObject *self, PyObject *args);
+static PyObject *ftrobopytools_jpeg2rgb(PyObject *self, PyObject *args);
 
 static PyMethodDef ftrobopytools_methods[] = {
     {"camInit", ftrobopytools_camInit, METH_VARARGS, "Initialize camera."},
     {"camClose", ftrobopytools_camClose, METH_VARARGS, "Close camera device."},
     {"sdlInit", ftrobopytools_sdlInit, METH_VARARGS, "Initialize Standard Display Library (SDL) for the TXT display."},
     {"sdlClose", ftrobopytools_sdlClose, METH_VARARGS, "Close Standard Display Library (SDL) for the TXT display."},
+    {"sdlPollEvent", ftrobopytools_sdlPollEvent, METH_VARARGS, "Poll Event in Standard Display Library (SDL)."},
     {"getJPEGImage", ftrobopytools_getJPEGImage, METH_VARARGS, "Get the current JPEG image from the TXT camera"},
     {"detectLines", ftrobopytools_detectLines, METH_VARARGS, "Detect lines (high contrast changes) along a line"},
     {"measureRGBColor", ftrobopytools_measureRGBColor, METH_VARARGS, "measure average r,g,b-color values within a specified rectangle"},
     {"measureContrast", ftrobopytools_measureContrast, METH_VARARGS, "measure average contrast within a specified rectangle"},
+    {"jpeg2rgb", ftrobopytools_jpeg2rgb, METH_VARARGS, "Convert a JPEG image to plain 24 Bit rgb."},
+  
     {NULL, NULL, 0, NULL}
 };
 
@@ -1137,8 +1142,26 @@ ftrobopytools_sdlInit(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+ftrobopytools_sdlPollEvent(PyObject *self, PyObject *args)
+{
+  PyObject * res;
+  SDL_Event event;
+  if ( ! SDL_PollEvent(&event) ) {
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+#if PY_MAJOR_VERSION >= 3
+  res = Py_BuildValue("y#", &event, sizeof(SDL_Event));
+#else
+  res = Py_BuildValue("s#", &event, sizeof(SDL_Event));
+#endif
+  return res;
+}
+
+static PyObject *
 ftrobopytools_sdlClose(PyObject *self, PyObject *args)
 {
+  SDL_FreeSurface(screen);
   SDL_Quit();
   
   Py_INCREF(Py_None);
@@ -1618,7 +1641,7 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
   int a0, b1, b2, b3, b4, c1, c2, c3, c4;
   float n1, n2, n3, n4, n5, n6, n7, n8, e;
   unsigned int gradbw;
-  
+
   if (!PyArg_ParseTuple(args, "IIIIIIII", &videv, &imgwidth, &imgheight, &xtopleft, &ytopleft, &xbottomright, &ybottomright, &showImage))
     return NULL;
   
@@ -1803,10 +1826,10 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     gradbw     = 0;
     for (i=1; i<rheight-1; i++) {
       for (j=1; j<rwidth-1; j++) {
-        gradbw += abs(blrp[0] - blrp[-rwidth]);
-        gradbw += abs(blrp[0] - blrp[+rwidth]);
-        gradbw += abs(blrp[0] - blrp[-1]);
-        gradbw += abs(blrp[0] - blrp[+1]);
+        gradbw += (blrp[0] - blrp[-rwidth]) * (blrp[0] - blrp[-rwidth]);
+        gradbw += (blrp[0] - blrp[+rwidth]) * (blrp[0] - blrp[+rwidth]);
+        gradbw += (blrp[0] - blrp[-1]) * (blrp[0] - blrp[-1]);
+        gradbw += (blrp[0] - blrp[+1]) * (blrp[0] - blrp[+1]);
         blrp++;
       }
       blrp += 2;
@@ -1825,7 +1848,7 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
       free(blrimg);
       blrimg = NULL;
     }
-
+    
     njDone();
   }
   
@@ -1842,6 +1865,56 @@ ftrobopytools_measureContrast(PyObject *self, PyObject *args)
     return Py_None;
   }
   
+}
+
+static PyObject *
+ftrobopytools_jpeg2rgb(PyObject *self, PyObject *args)
+{
+  const char *buf;
+  int size;
+  unsigned char *ret_buf;
+  unsigned char *bufnormal;
+  unsigned char *bufreverse;
+  unsigned char temp;
+  int ret_size;
+  int i;
+  PyObject * res;
+  
+#if PY_MAJOR_VERSION >= 3
+  Py_buffer pybuff;
+  if (!PyArg_ParseTuple(args, "y*", &pybuff))
+    return NULL;
+  size = pybuff.len;
+  buf  = pybuff.buf;
+#else
+  if (!PyArg_ParseTuple(args, "s#", &buf, &size))
+    return NULL;
+#endif
+  
+  njInit();
+  if (njDecode(buf, size)) {
+    struct module_state *st = GETSTATE(self);
+    PyErr_SetString(st->error, "Error decoding jpeg data.\n");
+    return NULL;
+  }
+  ret_buf    = njGetImage();
+  ret_size   = njGetImageSize();
+  bufnormal  = ret_buf;
+  bufreverse = ret_buf+ret_size;
+  for (i=0; i<ret_size; i++) {
+    temp        = *bufnormal;
+    *bufnormal  = *bufreverse;
+    *bufreverse = temp;
+    bufnormal++;
+    bufreverse--;
+  }
+#if PY_MAJOR_VERSION >= 3
+  res = Py_BuildValue("y#", ret_buf, ret_size);
+#else
+  res = Py_BuildValue("s#", ret_buf, ret_size);
+#endif
+  njDone();
+  return res;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
