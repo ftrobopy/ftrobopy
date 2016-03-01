@@ -271,7 +271,7 @@ class ftTXT(object):
       if len(data) == struct.calcsize(fstr):
         response_id, = struct.unpack(fstr, data)
       if response_id != m_resp_id:
-        self.handle_error('WARNING: ResponseID %s of startOnline command does not match' % hex(response_id))
+        self.handle_error('WARNING: ResponseID %s of startOnline command does not match' % hex(response_id), None)
       else:
         self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
         self._txt_thread.setDaemon(True)
