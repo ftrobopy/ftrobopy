@@ -1648,14 +1648,14 @@ class ftrobopy(ftTXT):
       
       >>> ftrob.play_sound(27, 5) # 5 Sekunden lang Fahrgeraeusche abspielen
     """
-    if time.time()-self._sound_timer > self._sound_length:
+    self._sound_length=seconds
+    if time.time()-self._sound_timer < self._sound_length:
       self._exchange_data_lock.acquire()
       self.setSoundIndex(idx)
       self.setSoundRepeat(1)
       self.incrSoundCmdId()
       self._exchange_data_lock.release()
-      self.sound_timer=time.time()
-      self.sound_length=seconds
+      self._sound_timer=time.time()
 
   def stop_sound(self):
     """
