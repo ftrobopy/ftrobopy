@@ -1378,11 +1378,11 @@ class ftrobopy(ftTXT):
       
       Das so erzeugte Motor-Objekt hat folgende Funktionen:
 
-      **setSpeed(speed)**
-      **setDistance(distance, syncto=None)**
-      **finished()**
-      **getCurrentDistance()**
-      **stop()**
+      * **setSpeed(speed)**
+      * **setDistance(distance, syncto=None)**
+      * **finished()**
+      * **getCurrentDistance()**
+      * **stop()**
 
       Die Funktionen im Detail:
       
