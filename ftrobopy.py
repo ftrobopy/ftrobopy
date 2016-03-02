@@ -1138,10 +1138,6 @@ class ftTXTexchange(threading.Thread):
     self._txt_interval_timer        = time.time()
     return
 
-  def __del__(self):
-    threading.Thread.__del__(self)
-    return
-
   def run(self):
     while not self._txt_stop_event.is_set():
       try:
