@@ -19,11 +19,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH for the excellent TXT hardware"
 __license__     = "MIT License"
-__version__     = "0.92"
+__version__     = "0.93"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "03/01/2016"
+__date__        = "03/02/2016"
 
 def version():
   """
@@ -244,7 +244,7 @@ class ftTXT(object):
     """
     return self._m_firmware
     
-  def startOnline(self, update_interval=0.001, keep_connection_interval=1.0):
+  def startOnline(self, update_interval=0.01):
     """
        Startet den Onlinebetrieb des TXT und startet einen Python-Thread, der die Verbindung zum TXT aufrecht erhaelt.
 
@@ -433,57 +433,6 @@ class ftTXT(object):
       self._txt_stop_event.set()  # Stop the data exchange thread if we were online
     return None
 
-  def exchangeData(self):
-    """
-       Low-Level Uebermittlung von Motor-, bzw. Output-Daten (z.B. Motorgeschwindigkeit, Motordistanz) an den TXT
-       und Abholen der aktuellen Eingangswerte vom TXT.
-
-       :return: Leer
-
-       Hinweis
-
-       - Diese Methode wird typischerweise nicht direkt aufgerufen, sondern nur indirekt ueber die update()-Methode (siehe unten)
-    """
-    m_id          = 0xCC3597BA
-    m_resp_id     = 0x4EEFAC41
-    m_exchange_ok = False
-    self._exchange_data_lock.acquire()
-    fields  = [m_id]
-    fields += self._pwm
-    fields += self._motor_sync
-    fields += self._motor_dist
-    fields += self._motor_cmd_id
-    fields += self._counter
-    fields += [self._sound, self._sound_index, self._sound_repeat,0,0]
-    self._exchange_data_lock.release()
-    buf = struct.pack('<I8h4h4h4h4hHHHbb', *fields)
-    self._socket_lock.acquire()
-    res = self._sock.send(buf)
-    data = self._sock.recv(512)
-    self._socket_lock.release()
-    fstr    = '<I8h4h4h4h4hH4bB4bB4bB4bB4bBb'
-    response_id = 0
-    if len(data) == struct.calcsize(fstr):
-      response = struct.unpack(fstr, data)
-    else:
-      print('Received data size (', len(data),') does not match length of format string (',struct.calcsize(fstr),')')
-      return m_exchange_ok
-    response_id = response[0]
-    if response_id != m_resp_id:
-      print('WARNING: ResponseID ', hex(response_id),' of exchangeData command does not match')
-    else:
-      m_exchange_ok = True
-    self._exchange_data.lock_acquire()
-    self._current_input          = response[1:9]
-    self._current_counter        = response[9:13]
-    self._current_counter_value  = response[13:17]
-    self._current_counter_cmd_id = response[17:21]
-    self._current_motor_cmd_id   = response[21:25]
-    self._current_sound_cmd_id   = response[25]
-    self._current_ir             = response[26:52]
-    self._exchange_data_lock.release()
-    return m_exchange_ok
-
   def startCameraOnline(self):
     """
       Startet den Prozess auf dem TXT, der das aktuelle Camerabild ueber Port 65001 ausgibt und startet einen Python-Thread,
@@ -580,13 +529,6 @@ class ftTXT(object):
     else:
       return None
 
-  def update(self, wait=False):
-    """
-    Dieser Befehl wird nicht mehr benoetigt und ist nur noch aus kompatibilitaetsgruenden vorhanden.
-    Die Kommunikation zum TXT ist inzwischen ueber Thread-Prozesse implementiert.
-    """
-    print("Der update Befehl wird nicht mehr benoetigt.")
-
   def sleep(self, seconds):
     """
     Dieser Befehl wird nicht mehr benoetigt und ist nur noch aus kompatibilitaetsgruenden vorhanden.
@@ -617,7 +559,6 @@ class ftTXT(object):
 
       >>> txt.setMotorDistance(1, 200)
       >>> txt.incrMotorCmdId(1)
-      >>> txt.update(wait=True)
     """
     self._exchange_data_lock.acquire()
     self._motor_cmd_id[idx] += 1
@@ -812,7 +753,6 @@ class ftTXT(object):
       >>> txt.setPwm(0,0)
       >>> txt.setPwm(1,512)
       >>> txt.setPwm(2,256)
-      >>> txt.update(wait=True) # uebermitteln der Daten an den TXT
     """
     self._exchange_data_lock.acquire()
     self._pwm[idx]=value
@@ -888,7 +828,6 @@ class ftTXT(object):
       >>> txt.setMotorSyncMaster(1, 1)
       >>> txt.incrMotorCmdId(0)
       >>> txt.incrMotorCmdId(1)
-      >>> txt.update(Wait=True)
     """
     self._exchange_data_lock.acquire()
     self._motor_sync[idx]=value
@@ -940,7 +879,6 @@ class ftTXT(object):
 
       >>> txt.setMotorDistance(2, 100)
       >>> txt.incrMotorCmdId(2)
-      >>> txt.update(wait=True)
     """
     self._exchange_data_lock.acquire()
     self._motor_dist[idx]=value
@@ -1238,7 +1176,7 @@ class ftTXTexchange(threading.Thread):
           return
         response_id = response[0]
         if response_id != m_resp_id:
-          print('ResponseID ', hex(response_id),' of exchangeData command does not match')
+          print('ResponseID ', hex(response_id),' of exchangeData command in exchange thread does not match')
           print('Connection to TXT aborted')
           self._txt_stop_event.set()
           return
@@ -1380,7 +1318,7 @@ class ftrobopy(ftTXT):
     * **sound_finished**
     
   """
-  def __init__(self, host, port, update_interval=0.01, keep_connection_interval=1.0):
+  def __init__(self, host, port, update_interval=0.01):
     """
       Initialisierung der ftrobopy Klasse:
       
@@ -1402,9 +1340,6 @@ class ftrobopy(ftTXT):
       :param update_interval: Zeit (in Sekunden) zwischen zwei Aufrufen des Datenaustausch-Prozesses mit dem TXT
       :type update_intervall: float
 
-      :param keep_connection_interval: Zeit (in Sekunden) zwischen zwei Aufrufen des Prozesses, der die Verbindung zum TXT aufrecht erhaelt
-      :type keep_connection_interval: float
-
       :return: Leer
       
       Anwedungsbeispiel:
@@ -1421,7 +1356,7 @@ class ftrobopy(ftTXT):
     self.updateConfig()
     for i in range(8):
       self.setPwm(i,0)
-    self.startOnline(update_interval, keep_connection_interval)
+    self.startOnline(update_interval)
 
   def __del__(self):
     self.stopCameraOnline()
@@ -1741,6 +1676,5 @@ class ftrobopy(ftTXT):
     self.setSoundIndex(0)
     self.setSoundRepeat(1)
     self.incrSoundCmdId()
-    self.update(wait=True)
     self._exchange_data_lock.release()
 
