@@ -1353,10 +1353,10 @@ class ftrobopy(ftTXT):
       print('ftrobopy needs at least firmwareversion ',hex(0x4010600), '.')
       sys.exit()
     print('Connected to ', self.getDevicename(), self.getFirmwareVersion())
-    self.updateConfig()
     for i in range(8):
       self.setPwm(i,0)
     self.startOnline(update_interval)
+    self.updateConfig()
 
   def __del__(self):
     self.stopCameraOnline()
