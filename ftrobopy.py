@@ -19,11 +19,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH for the excellent TXT hardware"
 __license__     = "MIT License"
-__version__     = "0.93"
+__version__     = "0.94"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "03/02/2016"
+__date__        = "03/12/2016"
 
 def version():
   """
