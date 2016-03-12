@@ -405,9 +405,9 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
-    #if not self.isOnline():
-    #  self.handle_error("Controller must be online before updateConfig() is called", None)
-    #  return
+    if not self.isOnline():
+      self.handle_error("Controller must be online before updateConfig() is called", None)
+      return
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id += 1
