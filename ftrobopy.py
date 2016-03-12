@@ -405,9 +405,9 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
-    if not self.isOnline():
-      self.handle_error("Controller must be online before updateConfig() is called", None)
-      return
+    #if not self.isOnline():
+    #  self.handle_error("Controller must be online before updateConfig() is called", None)
+    #  return
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id += 1
@@ -562,6 +562,8 @@ class ftTXT(object):
     """
     self._exchange_data_lock.acquire()
     self._motor_cmd_id[idx] += 1
+    if self._motor_cmd_id[idx] >= 32768:
+      self._motor_cmd_id[idx] = 0
     self._exchange_data_lock.release()
     return None
 
@@ -1496,7 +1498,8 @@ class ftrobopy(ftTXT):
         self._outer.incrMotorCmdId(self._output-1)
         self._outer._exchange_data_lock.release()
       def finished(self):
-        if self._outer.getCurrentMotorCmdId(self._output-1) <= self._command_id:
+        old = self._outer.getCurrentMotorCmdId(self._output-1)
+        if (old <= self._command_id) and not (old == 0 and self._command_id == 32767):
           return False
         else:
           return True
