@@ -19,11 +19,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH for the excellent TXT hardware"
 __license__     = "MIT License"
-__version__     = "0.94"
+__version__     = "0.96"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "03/12/2016"
+__date__        = "06/27/2016"
 
 def version():
   """
@@ -42,10 +42,8 @@ def default_error_handler(message, exception):
   print(message)
   return False
 
-
 def default_data_handler(ftTXT):
   pass
-
 
 class ftTXT(object):
   """
@@ -107,7 +105,6 @@ class ftTXT(object):
       >>> import ftrobopy
       >>> txt = ftrobopy.ftTXT('192.168.7.2', 65000)
     """
-    self._camera_already_running = False
     self._m_devicename = b''
     self._m_version    = b''
     self._host=host
@@ -119,21 +116,24 @@ class ftTXT(object):
     self._sock.connect((self._host, self._port))
     self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     self._sock.setblocking(1)
-    self._txt_stop_event = threading.Event()
+    self._txt_stop_event      = threading.Event()
+    self._camera_stop_event   = threading.Event()
     self._txt_stop_event.set()
-    self._exchange_data_lock = threading.RLock()
-    self._camera_data_lock   = threading.Lock()
-    self._socket_lock  = threading.Lock()
-    self._txt_thread = None
-    self._update_timer  = time.time()
-    self._sound_timer   = self._update_timer
-    self._sound_length  = 0
-    self._config_id            = 0
-    self._m_extension_id       = 0
-    self._ftX1_pgm_state_req   = 0
-    self._ftX1_old_FtTransfer  = 0
-    self._ftX1_dummy           = b'\x00\x00'
-    self._ftX1_motor           = [1,1,1,1]
+    self._camera_stop_event.set()
+    self._exchange_data_lock  = threading.RLock()
+    self._camera_data_lock    = threading.Lock()
+    self._socket_lock         = threading.Lock()
+    self._txt_thread          = None
+    self._camera_thread       = None
+    self._update_timer        = time.time()
+    self._sound_timer         = self._update_timer
+    self._sound_length        = 0
+    self._config_id           = 0
+    self._m_extension_id      = 0
+    self._ftX1_pgm_state_req  = 0
+    self._ftX1_old_FtTransfer = 0
+    self._ftX1_dummy          = b'\x00\x00'
+    self._ftX1_motor          = [1,1,1,1]
     self._ftX1_uni            = [1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
@@ -168,7 +168,10 @@ class ftTXT(object):
 
   def isOnline(self):
     return (not self._txt_stop_event.isSet()) and (self._txt_thread is not None)
-
+  
+  def cameraIsOnline(self):
+    return (not self._camera_stop_event.isSet()) and (self._camera_thread is not None)
+  
   def queryStatus(self):
     """
        Abfrage des Geraetenamens und der Firmware Versionsnummer des TXT
@@ -276,6 +279,11 @@ class ftTXT(object):
         self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
         self._txt_thread.setDaemon(True)
         self._txt_thread.start()
+        # keep_connection_thread is needed when using SyncDataBegin/End in interactive python mode
+        self._txt_keep_connection_stop_event = threading.Event()
+        self._txt_keep_connection_thread = ftTXTKeepConnection(self, 1.0, self._txt_keep_connection_stop_event)
+        self._txt_keep_connection_thread.setDaemon(True)
+        self._txt_keep_connection_thread.start()
     return None
 
   def stopOnline(self):
@@ -291,6 +299,7 @@ class ftTXT(object):
     if not self.isOnline():
       return
     self._txt_stop_event.set()
+    self._txt_keep_connection_stop_event.set()
     m_id       = 0x9BE5082C
     m_resp_id  = 0xFBF600D2
     buf        = struct.pack('<I', m_id)
@@ -430,7 +439,9 @@ class ftTXT(object):
       response_id, = struct.unpack(fstr, data)
     if response_id != m_resp_id:
       self.handle_error('WARNING: ResponseID %s of updateConfig command does not match' % hex(response_id), None)
-      self._txt_stop_event.set()  # Stop the data exchange thread if we were online
+      # Stop the data exchange thread and the keep connection thread if we were online
+      self._txt_stop_event.set()
+      self._txt_keep_connection_stop_event.set()
     return None
 
   def startCameraOnline(self):
@@ -454,35 +465,37 @@ class ftTXT(object):
       >>> f.write(''.join(pic))
       >>> f.close()
     """
-    if self._camera_already_running:
-      print("Camera is already running")
+    
+    if self._camera_stop_event.isSet():
+      self._camera_stop_event.clear()
+    else:
       return
-    self._camera_already_running = True
-    m_id                 = 0x882A40A6
-    m_resp_id            = 0xCF41B24E
-    self._m_width         = 320
-    self._m_height        = 240
-    self._m_framerate     = 15
-    self._m_powerlinefreq = 0 # 0=auto, 1=50Hz, 2=60Hz
-    buf        = struct.pack('<I4i', m_id,
+    if self._camera_thread is None:
+      m_id                  = 0x882A40A6
+      m_resp_id             = 0xCF41B24E
+      self._m_width         = 320
+      self._m_height        = 240
+      self._m_framerate     = 15
+      self._m_powerlinefreq = 0 # 0=auto, 1=50Hz, 2=60Hz
+      buf        = struct.pack('<I4i', m_id,
                                      self._m_width,
                                      self._m_height,
                                      self._m_framerate,
                                      self._m_powerlinefreq)
-    self._socket_lock.acquire()
-    res        = self._sock.send(buf)
-    data       = self._sock.recv(512)
-    self._socket_lock.release()
-    fstr       = '<I'
-    response_id = 0
-    if len(data) == struct.calcsize(fstr):
-      response_id, = struct.unpack(fstr, data)
-    if response_id != m_resp_id:
-      print('WARNING: ResponseID ', hex(response_id),' of startCameraOnline command does not match')
-    self._camera_stop_event = threading.Event()
-    self._camera_thread = camera(self._host, self._port+1, self._camera_data_lock, self._camera_stop_event)
-    self._camera_thread.setDaemon(True)
-    self._camera_thread.start()
+      self._socket_lock.acquire()
+      res        = self._sock.send(buf)
+      data       = self._sock.recv(512)
+      self._socket_lock.release()
+      fstr       = '<I'
+      response_id = 0
+      if len(data) == struct.calcsize(fstr):
+        response_id, = struct.unpack(fstr, data)
+      if response_id != m_resp_id:
+        print('WARNING: ResponseID ', hex(response_id),' of startCameraOnline command does not match')
+      else:
+        self._camera_thread = camera(self._host, self._port+1, self._camera_data_lock, self._camera_stop_event)
+        self._camera_thread.setDaemon(True)
+        self._camera_thread.start()
     return
 
   def stopCameraOnline(self):
@@ -494,8 +507,8 @@ class ftTXT(object):
       >>> txt.stopCameraOnline()
 
     """
-    if not self._camera_already_running:
-      return None
+    if not self.cameraIsOnline():
+      return
     self._camera_stop_event.set()
     m_id                 = 0x17C31F2F
     m_resp_id            = 0x4B3C1EB6
@@ -510,7 +523,7 @@ class ftTXT(object):
       response_id, = struct.unpack(fstr, data)
     if response_id != m_resp_id:
       print('WARNING: ResponseID ', hex(response_id),' of stopCameraOnline command does not match')
-    self._camera_already_running = False
+    self._camera_thread = None
     return
 
   def getCameraFrame(self):
@@ -524,19 +537,10 @@ class ftTXT(object):
 
       :return: jpeg Bild
     """
-    if self._camera_already_running:
+    if self.cameraIsOnline():
       return self._camera_thread.getCameraFrame()
     else:
       return None
-
-  def sleep(self, seconds):
-    """
-    Dieser Befehl wird nicht mehr benoetigt und ist nur noch aus kompatibilitaetsgruenden vorhanden.
-    Die Kommunikation zum TXT ist inzwischen ueber Thread-Prozesse implementiert.
-    Anstelle dieses Befehls sollte die Python-Methode time.sleep() aus dem Time-Modul verwendet werden
-    """
-    print("Anstelle des sleep-Befehls sollte die Methode time.sleep() aus dem Time-Modul verwendet werden.")
-
 
   def incrMotorCmdId(self, idx):
     """
@@ -1125,6 +1129,49 @@ class ftTXT(object):
     """
     self._exchange_data_lock.release()
 
+class ftTXTKeepConnection(threading.Thread):
+  """
+    Thread zur Aufrechterhaltung der Verbindung zwischen dem TXT und einem Computer
+    Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
+    """
+  def __init__(self, txt, maxtime, stop_event):
+    threading.Thread.__init__(self)
+    self._txt            = txt
+    self._txt_maxtime    = maxtime
+    self._txt_stop_event = stop_event
+    return
+  
+  def run(self):
+    while not self._txt_stop_event.is_set():
+      try:
+        self._txt._keep_running_lock.acquire()
+        o_time = self._txt._update_timer
+        self._txt._keep_running_lock.release()
+        m_time=time.time()-o_time
+        if (m_time > self._txt_maxtime):
+          m_id         = 0xDC21219A
+          m_resp_id    = 0xBAC9723E
+          buf          = struct.pack('<I', m_id)
+          self._txt._keep_running_lock.acquire()
+          res          = self._txt._sock.send(buf)
+          data         = self._txt._sock.recv(512)
+          self._txt._update_timer = time.time()
+          self._txt._keep_running_lock.release()
+          fstr         = '<I16sI'
+          response_id  = 0
+          if len(data) == struct.calcsize(fstr):
+            response_id, m_devicename, m_version = struct.unpack(fstr, data)
+          else:
+            m_devicename = ''
+            m_version    = ''
+          if response_id != m_resp_id:
+            print('ResponseID ', hex(response_id),'of keep connection queryStatus command does not match')
+            self._txt_stop_event.set()
+        time.sleep(1.0)
+      except:
+        return
+    return
+
 class ftTXTexchange(threading.Thread):
   """
   Thread zum kontinuierlichen Datenaustausch zwischen TXT und einem Computer
@@ -1139,7 +1186,7 @@ class ftTXTexchange(threading.Thread):
     self._txt_stop_event            = stop_event
     self._txt_interval_timer        = time.time()
     return
-
+  
   def run(self):
     while not self._txt_stop_event.is_set():
       try:
@@ -1189,8 +1236,9 @@ class ftTXTexchange(threading.Thread):
         self._txt.handle_data(self._txt)
         self._txt._exchange_data_lock.release()
       except Exception as err:
-        self._txt.handle_error('Network error', err)
         self._txt_stop_event.set()
+        print('Network error ',err)
+        self._txt.handle_error('Network error', err)
         return
     return
 
@@ -1204,7 +1252,6 @@ class camera(threading.Thread):
     self._camera_host           = host
     self._camera_port           = port
     self._camera_stop_event     = stop_event
-    self._thread_first_start    = True
     self._camera_data_lock      = lock
     self._m_numframesready      = 0
     self._m_framewidth          = 0
@@ -1215,27 +1262,25 @@ class camera(threading.Thread):
     return
 
   def run(self):
-    if self._thread_first_start:
-      self._camera_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      self._camera_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-      self._camera_sock.setblocking(1)
-      self._total_bytes_read = 0
-      camera_ready = False
-      fault_count  = 0
-      while not camera_ready:
-        time.sleep(0.02)
-        try:
-          self._camera_sock.connect((self._camera_host, self._camera_port))
-          camera_ready = True
-        except:
-          fault_count += 1
-        if fault_count > 150:
-          camera_ready = True
-          self._camera_stop_event.set()
-          print('Camera not connected')
-      self._thread_first_start = False
-      if not self._camera_stop_event.is_set():
-        print('Camera connected')
+    self._camera_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    self._camera_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    self._camera_sock.setblocking(1)
+    self._total_bytes_read = 0
+    camera_ready = False
+    fault_count  = 0
+    while not camera_ready:
+      time.sleep(0.02)
+      try:
+        self._camera_sock.connect((self._camera_host, self._camera_port))
+        camera_ready = True
+      except:
+        fault_count += 1
+      if fault_count > 150:
+        camera_ready = True
+        self._camera_stop_event.set()
+        print('Camera not connected')
+    if not self._camera_stop_event.is_set():
+      print('Camera connected')
     while not self._camera_stop_event.is_set():
       try:
         m_id     = 0xBDC2D7A1
@@ -1275,7 +1320,8 @@ class camera(threading.Thread):
             self._total_bytes_read = 0
         else:
           self._camera_stop_event.set()
-      except:
+      except Exception as err:
+        print('ERROR in camera thread: ', err)
         self._camera_sock.close()
         return
     self._camera_sock.close()
@@ -1292,9 +1338,11 @@ class camera(threading.Thread):
 
     >>> pic = txt.getCameraFrame()
     """
-    data = []
+    #data = []
     self._camera_data_lock.acquire()
-    data[:] = self._m_framedata[:]
+    #data[:] = self._m_framedata[:]
+    data = self._m_framedata
+    self._m_framedata = []
     self._camera_data_lock.release()
     return data
 
