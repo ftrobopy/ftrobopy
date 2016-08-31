@@ -19,11 +19,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH for the excellent TXT hardware"
 __license__     = "MIT License"
-__version__     = "0.96"
+__version__     = "0.97"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "06/27/2016"
+__date__        = "07/18/2016"
 
 def version():
   """
@@ -1395,8 +1395,8 @@ class ftrobopy(ftTXT):
     """
     ftTXT.__init__(self, host, port)
     self.queryStatus()
-    if self.getVersionNumber() < 0x4010600:
-      print('ftrobopy needs at least firmwareversion ',hex(0x4010600), '.')
+    if self.getVersionNumber() < 0x4010500:
+      print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
       sys.exit()
     print('Connected to ', self.getDevicename(), self.getFirmwareVersion())
     for i in range(8):
@@ -1605,20 +1605,19 @@ class ftrobopy(ftTXT):
 
   def input(self, num):
     """
-      Diese Funktion erzeugt ein allgemeines Input-Objekt fuer Sensoren oder Taster,
-      die an einem der Eingaenge I1-I8 des TXT angeschlossen sind.
+      Diese Funktion erzeugt ein digitales (Ein/Aus) Input-Objekt, an einem der Eingaenge I1-I8.  Dies kann z.B. ein Taster, ein Photo-Transistor oder auch ein Reed-Kontakt sein.
       
       Anwendungsbeispiel:
       
       >>> Taster = ftrob.input(5)
       
-      Das so erzeugte allg. Input-Objekt hat folgende Methoden:
+      Das so erzeugte Taster-Input-Objekt hat folgende Methoden:
       
       **state** ()
       
-      Mit dieser Methode wird der Status des Eingangs abgefragt.
+      Mit dieser Methode wird der Status des digitalen Eingangs abgefragt.
       
-      :return: Zustand des Schalters (0: Kontakt geschlossen, 1: Kontakt geoeffnet)
+      :return: Zustand des Eingangs (0: Kontakt geschlossen, d.h. Eingang mit Masse verbunden, 1: Kontakt geoeffnet)
       :rtype: integer
       
       Anwendungsbeispiel:
@@ -1639,6 +1638,40 @@ class ftrobopy(ftTXT):
     self.updateConfig()
     return inp(self, num)
   
+  def resistor(self, num):
+    """
+      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.
+    
+      Anwendungsbeispiel:
+    
+      >>> R = ftrob.resistor(7)
+    
+      Das so erzeugte Widerstands-Objekt hat folgende Methoden:
+    
+      **value** ()
+    
+      Mit dieser Methode wird der Wiederstand abgefragt.
+    
+      :return: Der am Eingang anliegende Wiederstandswert
+      :rtype: float
+    
+      Anwendungsbeispiel:
+    
+      >>> print("Der Wiederstand betraegt ", R.value())
+    """
+    class inp(object):
+      def __init__(self, outer, num):
+        self._outer=outer
+        self._num=num
+      def value(self):
+        return self._outer.getCurrentInput(num-1)
+  
+    M, I = self.getConfig()
+    I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
+    self.setConfig(M, I)
+    self.updateConfig()
+    return inp(self, num)
+
   def ultrasonic(self, num):
     """
       Diese Funktion erzeugt ein Objekt zur Abfrage eines an einem der Eingaenge I1-I8 angeschlossenen
@@ -1670,6 +1703,108 @@ class ftrobopy(ftTXT):
     
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
+    self.setConfig(M, I)
+    self.updateConfig()
+    return inp(self, num)
+  
+  def voltage(self, num):
+    """
+      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Spannungspegels, der an einem der Eingaenge I1-I8 angeschlossenen ist. Damit kann z.B. auch der Ladezustand des Akkus ueberwacht werden. Der fischertechnik Farbsensor kann auch mit diesem Objekt abgefragt werden.
+      
+      Anwendungsbeispiel:
+      
+      >>> batterie = ftrob.voltage(7)
+      
+      Das so erzeugte Spannungs-Mess-Objekt hat folgende Methoden:
+      
+      **value** ()
+      
+      Mit dieser Methode wird die anliegende Spannung (in Volt) abgefragt.
+      
+      :return: Die am Eingang anliegene Spannung (in Volt)
+      :rtype: float
+      
+      Anwendungsbeispiel:
+      
+      >>> print("Die Spannung betraegt ", batterie.value(), " Volt.")
+      """
+    class inp(object):
+      def __init__(self, outer, num):
+        self._outer=outer
+        self._num=num
+      def voltage(self):
+        return self._outer.getCurrentInput(num-1)
+    
+    M, I = self.getConfig()
+    I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
+    self.setConfig(M, I)
+    self.updateConfig()
+    return inp(self, num)
+
+  def resistor2(self, num):
+    """
+    Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Ohmschen Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist.
+    
+    Anwendungsbeispiel:
+    
+    >>> R = ftrob.resistor2(7)
+    
+    Das so erzeugte Widerstands-Objekt hat folgende Methoden:
+    
+    **value** ()
+    
+    Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
+    
+    :return: Der am Eingang gemessene Widerstand in Ohm
+    :rtype: float
+    
+    Anwendungsbeispiel:
+    
+    >>> print("Der Widerstand betraegt ", R.value(), " Ohm.")
+    """
+    class inp(object):
+      def __init__(self, outer, num):
+        self._outer=outer
+        self._num=num
+      def resistance(self):
+        return self._outer.getCurrentInput(num-1)
+    
+    M, I = self.getConfig()
+    I[num-1]= (ftTXT.C_RESISTANCE2, ftTXT.C_ANALOG)
+    self.setConfig(M, I)
+    self.updateConfig()
+    return inp(self, num)
+
+  def trailfollower(self, num):
+    """
+      Diese Funktion erzeugt ein digitales Input-Objekt zur Abfrage eines Spursensors, der an einem der Eingaenge I1-I8 angeschlossenen ist.
+    
+      Anwendungsbeispiel:
+    
+      >>> R = ftrob.trailfollower(7)
+    
+      Das so erzeugte Widerstands-Objekt hat folgende Methoden:
+    
+      **state** ()
+    
+      Mit dieser Methode wird der Spursensor abgefragt.
+    
+      :return: Der Wert des Spursensors, der am Eingang angeschlossen ist.
+      :rtype: integer
+    
+      Anwendungsbeispiel:
+    
+      >>> print("Der Wert des Spursensors ist ", R.state())
+    """
+    class inp(object):
+      def __init__(self, outer, num):
+        self._outer=outer
+        self._num=num
+      def state(self):
+        return self._outer.getCurrentInput(num-1)
+    
+    M, I = self.getConfig()
+    I[num-1]= (ftTXT.C_RESISTOR2, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
