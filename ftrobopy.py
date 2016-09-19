@@ -19,11 +19,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH for the excellent TXT hardware"
 __license__     = "MIT License"
-__version__     = "0.97"
+__version__     = "0.98"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "07/18/2016"
+__date__        = "09/18/2016"
 
 def version():
   """
@@ -125,6 +125,7 @@ class ftTXT(object):
     self._socket_lock         = threading.Lock()
     self._txt_thread          = None
     self._camera_thread       = None
+    self._update_status       = 0
     self._update_timer        = time.time()
     self._sound_timer         = self._update_timer
     self._sound_length        = 0
@@ -247,7 +248,7 @@ class ftTXT(object):
     """
     return self._m_firmware
     
-  def startOnline(self, update_interval=0.01):
+  def startOnline(self, update_interval=0.02):
     """
        Startet den Onlinebetrieb des TXT und startet einen Python-Thread, der die Verbindung zum TXT aufrecht erhaelt.
 
@@ -1129,6 +1130,27 @@ class ftTXT(object):
     """
     self._exchange_data_lock.release()
 
+  def updateWait(self, minimum_time=0.001):
+    """
+      Wartet so lange, bis der naechste Datenaustausch-Zyklus mit dem TXT erfolgreich abgeschlossen wurde.
+      
+      Anwendungsbeispiel:
+      
+      >>> motor1.setSpeed(512)
+      >>> motor1.setDistance(100)
+      >>> while not motor1.finished():
+      >>>   txt.updateWait()
+      
+      Ein einfaches "pass" anstelle des "updateWait()" wuerde zu einer hohen CPU-
+      Wuerde in diesem Beispiel ein einfaches "pass" anstelle von "updateWait()" verwendet,
+      
+    """
+    self._exchange_data_lock.acquire()
+    self._update_status = 0
+    self._exchange_data_lock.release()
+    while self._update_status == 0:
+      time.sleep(minimum_time)
+
 class ftTXTKeepConnection(threading.Thread):
   """
     Thread zur Aufrechterhaltung der Verbindung zwischen dem TXT und einem Computer
@@ -1240,6 +1262,9 @@ class ftTXTexchange(threading.Thread):
         print('Network error ',err)
         self._txt.handle_error('Network error', err)
         return
+      self._txt._exchange_data_lock.acquire()
+      self._txt._update_status = 1
+      self._txt._exchange_data_lock.release()
     return
 
 class camera(threading.Thread):
