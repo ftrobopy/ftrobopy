@@ -56,8 +56,8 @@ class ftTXT(object):
 
         + ``C_VOLTAGE    = 0`` *Zur Verwendung eines Eingangs als Spannungsmesser*
         + ``C_SWITCH     = 1`` *Zur Verwendung eines Eingangs als Taster*
-        + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Wiederstand, z.B. Photowiederstand*
-        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Wiederstand*
+        + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Widerstand, z.B. Photowiderstand*
+        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Widerstand*
         + ``C_ULTRASONIC = 3`` *Zur Verwendung eines Eingangs als Distanzmesser*
         + ``C_ANALOG     = 0`` *Eingang wird analog verwendet*
         + ``C_DIGITAL    = 1`` *Eingang wird digital verwendet*
@@ -1675,14 +1675,14 @@ class ftrobopy(ftTXT):
     
       **value** ()
     
-      Mit dieser Methode wird der Wiederstand abgefragt.
+      Mit dieser Methode wird der Widerstand abgefragt.
     
-      :return: Der am Eingang anliegende Wiederstandswert
+      :return: Der am Eingang anliegende Widerstandswert
       :rtype: float
     
       Anwendungsbeispiel:
     
-      >>> print("Der Wiederstand betraegt ", R.value())
+      >>> print("Der Widerstand betraegt ", R.value())
     """
     class inp(object):
       def __init__(self, outer, num):
