@@ -23,7 +23,7 @@ __version__     = "0.98"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "09/18/2016"
+__date__        = "10/19/2016"
 
 def version():
   """
@@ -1663,13 +1663,13 @@ class ftrobopy(ftTXT):
     self.updateConfig()
     return inp(self, num)
   
-  def resistor(self, num):
+  def resistor5k(self, num):
     """
-      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.
+      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein. Der Rueckgabewert liegt zwischen 10 Ohm und 4999 Ohm. Der Rueckgabewert 5000 steht fuer einen Widerstand ausserhalb des gueltigen Wertebereichs.
     
       Anwendungsbeispiel:
     
-      >>> R = ftrob.resistor(7)
+      >>> R = ftrob.resistor5k(7)
     
       Das so erzeugte Widerstands-Objekt hat folgende Methoden:
     
@@ -1677,7 +1677,7 @@ class ftrobopy(ftTXT):
     
       Mit dieser Methode wird der Widerstand abgefragt.
     
-      :return: Der am Eingang anliegende Widerstandswert
+      :return: Der am Eingang anliegende Widerstandswert in Ohm (Wertebereich 10 - 4999, 5000 = ungueltiger Wert)
       :rtype: float
     
       Anwendungsbeispiel:
@@ -1766,13 +1766,13 @@ class ftrobopy(ftTXT):
     self.updateConfig()
     return inp(self, num)
 
-  def resistor2(self, num):
+  def resistor15k(self, num):
     """
-    Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Ohmschen Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist.
+    Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Ohmschen Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Der Rueckgabewert liegt zwischen 30 Ohm und 14999 Ohm. Der Rueckgabewert 15000 steht fuer einen Widerstand ausserhalb des gueltigen Wertebereichs.
     
     Anwendungsbeispiel:
     
-    >>> R = ftrob.resistor2(7)
+    >>> R = ftrob.resistor15k(7)
     
     Das so erzeugte Widerstands-Objekt hat folgende Methoden:
     
@@ -1780,7 +1780,7 @@ class ftrobopy(ftTXT):
     
     Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
     
-    :return: Der am Eingang gemessene Widerstand in Ohm
+    :return: Der am Eingang gemessene Widerstand in Ohm (Wertebereich 30 - 14999, 15000 = ungueltiger Wert)
     :rtype: float
     
     Anwendungsbeispiel:
@@ -1795,7 +1795,7 @@ class ftrobopy(ftTXT):
         return self._outer.getCurrentInput(num-1)
     
     M, I = self.getConfig()
-    I[num-1]= (ftTXT.C_RESISTANCE2, ftTXT.C_ANALOG)
+    I[num-1]= (ftTXT.C_RESISTOR2, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
