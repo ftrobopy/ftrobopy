@@ -1673,7 +1673,7 @@ class ftrobopy(ftTXT):
     
       Das so erzeugte Widerstands-Objekt hat folgende Methoden:
     
-      **value** ()
+      **resistance** ()
     
       Mit dieser Methode wird der Widerstand abgefragt.
     
@@ -1682,13 +1682,13 @@ class ftrobopy(ftTXT):
     
       Anwendungsbeispiel:
     
-      >>> print("Der Widerstand betraegt ", R.value())
+      >>> print("Der Widerstand betraegt ", R.resistance())
     """
     class inp(object):
       def __init__(self, outer, num):
         self._outer=outer
         self._num=num
-      def value(self):
+      def resistance(self):
         return self._outer.getCurrentInput(num-1)
   
     M, I = self.getConfig()
@@ -1742,7 +1742,7 @@ class ftrobopy(ftTXT):
       
       Das so erzeugte Spannungs-Mess-Objekt hat folgende Methoden:
       
-      **value** ()
+      **voltage** ()
       
       Mit dieser Methode wird die anliegende Spannung (in Volt) abgefragt.
       
@@ -1751,7 +1751,7 @@ class ftrobopy(ftTXT):
       
       Anwendungsbeispiel:
       
-      >>> print("Die Spannung betraegt ", batterie.value(), " Volt.")
+      >>> print("Die Spannung betraegt ", batterie.voltage(), " Volt.")
       """
     class inp(object):
       def __init__(self, outer, num):
@@ -1776,7 +1776,7 @@ class ftrobopy(ftTXT):
     
     Das so erzeugte Widerstands-Objekt hat folgende Methoden:
     
-    **value** ()
+    **resistance** ()
     
     Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
     
@@ -1785,7 +1785,7 @@ class ftrobopy(ftTXT):
     
     Anwendungsbeispiel:
     
-    >>> print("Der Widerstand betraegt ", R.value(), " Ohm.")
+    >>> print("Der Widerstand betraegt ", R.resistance(), " Ohm.")
     """
     class inp(object):
       def __init__(self, outer, num):
