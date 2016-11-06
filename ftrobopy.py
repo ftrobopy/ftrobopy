@@ -421,6 +421,8 @@ class ftTXT(object):
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id += 1
+    if self._config_id > 32767:
+      self._config_id = 0
     fields = [m_id, self._config_id, self._m_extension_id]
     fields.append(self._ftX1_pgm_state_req)
     fields.append(self._ftX1_old_FtTransfer)
