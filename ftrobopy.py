@@ -214,7 +214,7 @@ class ftTXT(object):
     """
     if self._directmode:
       self._m_devicename = 'TXT direct'
-      self._m_version    = '0x00000'
+      self._m_version    = '0x4010500'
       self._m_firmware   = 'firmware version not detected'
       return self._m_devicename, self._m_version
     m_id         = 0xDC21219A
@@ -1310,7 +1310,7 @@ class ftTXTexchange(threading.Thread):
               # (mode, digital) == (C_RESISTOR2,  C_DIGITAL): # ftrobopy.trailfollower
               direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE
         
-            inp[k/2] |= (direct_mode & 0x0F) << (4 * (k%2))
+            inp[int(k/2)] |= (direct_mode & 0x0F) << (4 * (k%2))
           fields.append(inp[0])
           fields.append(inp[1])
           fields.append(inp[2])
@@ -1348,7 +1348,7 @@ class ftTXTexchange(threading.Thread):
           if self._txt._pwm[k] == 512:
             pwm = 255
           else:
-            pwm = self._txt._pwm[k] / 2
+            pwm = int(self._txt._pwm[k] / 2)
           fields.append(pwm)
           fmtstr += 'B'
 
@@ -1750,9 +1750,9 @@ class ftrobopy(ftTXT):
     else:
       ftTXT.__init__(self, host, port)
     self.queryStatus()
-    if self.getVersionNumber() < 0x4010500:
-      print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
-      sys.exit()
+    #if self.getVersionNumber() < 0x4010500:
+    #  print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
+    #  sys.exit()
     print('Connected to ', self.getDevicename(), self.getFirmwareVersion())
     for i in range(8):
       self.setPwm(i,0)
@@ -1762,7 +1762,10 @@ class ftrobopy(ftTXT):
   def __del__(self):
     self.stopCameraOnline()
     self.stopOnline()
-    self._sock.close()
+    if self._sock:
+      self._sock.close()
+    if self._ser_ms:
+      self._ser_ms.close()
 
   def motor(self, output):
     """
