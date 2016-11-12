@@ -7,23 +7,24 @@
 
 from __future__ import print_function
 from os import system
+import os
 import sys
 import socket
+import serial
 import threading
-import select
 import struct
 import time
 from math import sqrt
 
 __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
-__credits__     = "fischertechnik GmbH for the excellent TXT hardware"
+__credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "0.98"
+__version__     = "1.5"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "10/19/2016"
+__date__        = "11/12/2016"
 
 def version():
   """
@@ -56,26 +57,37 @@ class ftTXT(object):
 
         + ``C_VOLTAGE    = 0`` *Zur Verwendung eines Eingangs als Spannungsmesser*
         + ``C_SWITCH     = 1`` *Zur Verwendung eines Eingangs als Taster*
-        + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Widerstand, z.B. Photowiderstand*
-        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Widerstand*
+        + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Wiederstand, z.B. Photowiederstand*
+        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Wiederstand*
         + ``C_ULTRASONIC = 3`` *Zur Verwendung eines Eingangs als Distanzmesser*
         + ``C_ANALOG     = 0`` *Eingang wird analog verwendet*
         + ``C_DIGITAL    = 1`` *Eingang wird digital verwendet*
         + ``C_OUTPUT     = 0`` *Ausgang (O1-O8) wird zur Ansteuerung z.B. einer Lampe verwendet*
         + ``C_MOTOR      = 1`` *Ausgang (M1-M4) wird zur Ansteuerung eines Motors verwendet*
   """
-  
-  C_VOLTAGE    = 0
-  C_SWITCH     = 1
-  C_RESISTOR   = 1
-  C_RESISTOR2  = 2
-  C_ULTRASONIC = 3
-  C_ANALOG     = 0
-  C_DIGITAL    = 1
-  C_OUTPUT     = 0
-  C_MOTOR      = 1
 
-  def __init__(self, host, port, on_error=default_error_handler, on_data=default_data_handler):
+  C_VOLTAGE                    = 0
+  C_SWITCH                     = 1
+  C_RESISTOR                   = 1
+  C_RESISTOR2                  = 2
+  C_ULTRASONIC                 = 3
+  C_ANALOG                     = 0
+  C_DIGITAL                    = 1
+  C_OUTPUT                     = 0
+  C_MOTOR                      = 1
+  
+  # command codes for TXT motor shield
+  C_MOT_CMD_CONFIG_IO          = 0x51
+  C_MOT_CMD_EXCHANGE_DATA      = 0x54
+
+  # input configuration codes for TXT motor shield
+  C_MOT_INPUT_DIGITAL_VOLTAGE  = 0
+  C_MOT_INPUT_DIGITAL_5K       = 1
+  C_MOT_INPUT_ANALOG_VOLTAGE   = 2
+  C_MOT_INPUT_ANALOG_5K        = 3
+  C_MOT_INPUT_ULTRASONIC       = 4
+
+  def __init__(self, host='127.0.0.1', port=65000, serport='/dev/ttyO2' , on_error=default_error_handler, on_data=default_data_handler, directmode=False):
     """
       Initialisierung der ftTXT Klasse:
 
@@ -93,6 +105,9 @@ class ftTXT(object):
 
       :param port: Portnummer (normalerweise 65000)
       :type port: integer
+      
+      :param serport: Serieller Port zur direkten Ansteuerung der Motorplatine des TXT
+      :type serport: string
 
       :param on_error: Errorhandler fuer Fehler bei der Kommunikation mit dem Controller (optional)
       :type port: function(str, Exception) -> bool
@@ -109,13 +124,20 @@ class ftTXT(object):
     self._m_version    = b''
     self._host=host
     self._port=port
+    self._ser_port=serport
     self.handle_error=on_error
     self.handle_data=on_data
-    self._sock=socket.socket()
-    self._sock.settimeout(5)
-    self._sock.connect((self._host, self._port))
-    self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    self._sock.setblocking(1)
+    self._directmode=directmode
+    if self._directmode:
+      self._ser_ms            = serial.Serial(self._ser_port, 230000, timeout=1)
+      self._sock              = None
+    else:
+      self._sock=socket.socket()
+      self._sock.settimeout(5)
+      self._sock.connect((self._host, self._port))
+      self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      self._sock.setblocking(1)
+      self._ser_ms            = None
     self._txt_stop_event      = threading.Event()
     self._camera_stop_event   = threading.Event()
     self._txt_stop_event.set()
@@ -127,9 +149,11 @@ class ftTXT(object):
     self._camera_thread       = None
     self._update_status       = 0
     self._update_timer        = time.time()
+    self._cycle_count         = 0
     self._sound_timer         = self._update_timer
     self._sound_length        = 0
     self._config_id           = 0
+    self._config_id_old       = 0
     self._m_extension_id      = 0
     self._ftX1_pgm_state_req  = 0
     self._ftX1_old_FtTransfer = 0
@@ -142,7 +166,7 @@ class ftTXT(object):
                                  1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
-                                 1,1,b'\x00\x00'] 
+                                 1,1,b'\x00\x00']
     self._ftX1_cnt            = [1,b'\x00\x00\x00',
                                  1,b'\x00\x00\x00',
                                  1,b'\x00\x00\x00',
@@ -153,7 +177,6 @@ class ftTXT(object):
     self._motor_sync   = [0,0,0,0]
     self._motor_dist   = [0,0,0,0]
     self._motor_cmd_id = [0,0,0,0]
-    self._last_motor_cmd_id = self._motor_cmd_id
     self._counter      = [0,0,0,0]
     self._sound        = 0
     self._sound_index  = 0
@@ -165,6 +188,10 @@ class ftTXT(object):
     self._current_motor_cmd_id   = [0,0,0,0]
     self._current_sound_cmd_id   = 0
     self._current_ir             = range(26)
+    self._current_power          = 0
+    self._current_temperature    = 0
+    self._current_reference_volt = 0
+    self._current_extension_volt = 0
     self._exchange_data_lock.release() 
 
   def isOnline(self):
@@ -185,6 +212,11 @@ class ftTXT(object):
 
        >>> name, version = txt.queryStatus()
     """
+    if self._directmode:
+      self._m_devicename = 'TXT direct'
+      self._m_version    = '0x00000'
+      self._m_firmware   = 'firmware version not detected'
+      return self._m_devicename, self._m_version
     m_id         = 0xDC21219A
     m_resp_id    = 0xBAC9723E
     buf          = struct.pack('<I', m_id)
@@ -258,6 +290,19 @@ class ftTXT(object):
 
        >>> txt.startOnline()
     """
+    if self._directmode == True:
+      if self._txt_stop_event.isSet():
+        self._txt_stop_event.clear()
+      if self._txt_thread is None:
+        self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
+        self._txt_thread.setDaemon(True)
+        self._txt_thread.start()
+        # keep_connection_thread is needed when using SyncDataBegin/End in interactive python mode
+        #self._txt_keep_connection_stop_event = threading.Event()
+        #self._txt_keep_connection_thread = ftTXTKeepConnection(self, 1.0, self._txt_keep_connection_stop_event)
+        #self._txt_keep_connection_thread.setDaemon(True)
+        #self._txt_keep_connection_thread.start()
+      return None
     if self._txt_stop_event.isSet():
       self._txt_stop_event.clear()
     else:
@@ -297,6 +342,10 @@ class ftTXT(object):
 
        >>> txt.stopOnline()
     """
+    if self._directmode:
+      self._txt_stop_event.set()
+      self._txt_thread = None
+      return None
     if not self.isOnline():
       return
     self._txt_stop_event.set()
@@ -357,8 +406,6 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
-    m_id       = 0x060EF27E
-    m_resp_id  = 0x9689A68C
     self._config_id += 1
     # Configuration of motors
     # 0=single output O1/O2
@@ -415,14 +462,15 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
+    if self._directmode:
+      # in direct mode i/o port configuration is performed automatically in exchangeData thread
+      return
     if not self.isOnline():
       self.handle_error("Controller must be online before updateConfig() is called", None)
       return
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id += 1
-    if self._config_id > 32767:
-      self._config_id = 0
     fields = [m_id, self._config_id, self._m_extension_id]
     fields.append(self._ftX1_pgm_state_req)
     fields.append(self._ftX1_old_FtTransfer)
@@ -468,7 +516,9 @@ class ftTXT(object):
       >>> f.write(''.join(pic))
       >>> f.close()
     """
-    
+    if self._directmode:
+      # ftrobopy.py does not support camera in direct mode, please use native camera support (e.g. ftrobopylib.so or opencv)
+      return
     if self._camera_stop_event.isSet():
       self._camera_stop_event.clear()
     else:
@@ -510,6 +560,8 @@ class ftTXT(object):
       >>> txt.stopCameraOnline()
 
     """
+    if self._directmode:
+      return
     if not self.cameraIsOnline():
       return
     self._camera_stop_event.set()
@@ -540,6 +592,8 @@ class ftTXT(object):
 
       :return: jpeg Bild
     """
+    if self._directmode:
+      return
     if self.cameraIsOnline():
       return self._camera_thread.getCameraFrame()
     else:
@@ -569,8 +623,7 @@ class ftTXT(object):
     """
     self._exchange_data_lock.acquire()
     self._motor_cmd_id[idx] += 1
-    if self._motor_cmd_id[idx] >= 32768:
-      self._motor_cmd_id[idx] = 0
+    self._motor_cmd_id[idx] &= 0x07
     self._exchange_data_lock.release()
     return None
 
@@ -634,6 +687,7 @@ class ftTXT(object):
     """
     self._exchange_data_lock.acquire()
     self._counter[idx] += 1
+    self._counter[idx] &= 0x07
     self._exchange_data_lock.release()
     return None
 
@@ -1066,6 +1120,7 @@ class ftTXT(object):
     return ret
 
   def getCurrentIr(self):
+    # in directmode ir is not supported yet in this version of ftrobopy
     """
       Liefert die aktuellen Werte der Infrarot Fernsteuerung zurueck (als Array oder als einzelnen Wert)
 
@@ -1087,6 +1142,9 @@ class ftTXT(object):
 
       >>> print("Aktuelle Werte der IR Fernsteuerung: ", txt.getCurrentIr())
     """
+    if self._directmode:
+      print("Dieses Kommando steht im Direktmodus noch nicht zur Verfuegung.")
+      return
     self._exchange_data_lock.acquire()
     ret=self._current_ir
     self._exchange_data_lock.release()
@@ -1143,8 +1201,7 @@ class ftTXT(object):
       >>> while not motor1.finished():
       >>>   txt.updateWait()
       
-      Ein einfaches "pass" anstelle des "updateWait()" wuerde zu einer hohen CPU-
-      Wuerde in diesem Beispiel ein einfaches "pass" anstelle von "updateWait()" verwendet,
+      Ein einfaches "pass" anstelle des "updateWait()" wuerde zu einer hohen CPU-Last fuehren.
       
     """
     self._exchange_data_lock.acquire()
@@ -1200,7 +1257,7 @@ class ftTXTexchange(threading.Thread):
   """
   Thread zum kontinuierlichen Datenaustausch zwischen TXT und einem Computer
   sleep_between_updates ist die Zeit, die zwischen zwei Datenaustauschprozessen gewartet wird.
-  Der TXT kann im schnellsten Falle alle 20 ms Daten austauschen.
+  Der TXT kann im schnellsten Falle alle 10 ms Daten austauschen.
   Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
   """
   def __init__(self, txt, sleep_between_updates, stop_event):
@@ -1213,7 +1270,268 @@ class ftTXTexchange(threading.Thread):
   
   def run(self):
     while not self._txt_stop_event.is_set():
-      try:
+      if self._txt._directmode :
+        if (self._txt_sleep_between_updates > 0):
+          time.sleep(self._txt_sleep_between_updates)
+
+        self._txt._cycle_count += 1
+        if self._txt._cycle_count > 15:
+          self._txt._cycle_count = 0
+
+        self._txt._exchange_data_lock.acquire()
+        
+        if self._txt._config_id != self._txt._config_id_old:
+          self._txt._config_id_old = self._txt._config_id
+          #
+          # at first, transfer i/o config data from TXT to motor shield
+          # (this is only necessary, if config data has been changed, e.g. the config_id number has been increased)
+          #
+          fields = []
+          fmtstr = '<' # little endian
+          fields.append(ftTXT.C_MOT_CMD_CONFIG_IO)
+          fields.append(0) # number of bytes to transfer to TXT, will be set below
+          fields.append(self._txt._cycle_count) # cycle counter of transmitted and received data have to match (not yet checked here yet !)
+          fmtstr += 'BBB'
+          inp     = [0, 0, 0, 0]
+          for k in range(8):
+            mode    = self._txt._ftX1_uni[k*3]
+            digital = self._txt._ftX1_uni[k*3+1]
+            if   (mode, digital) == (ftTXT.C_SWITCH,     ftTXT.C_DIGITAL): # ftrobopy.input
+              direct_mode = ftTXT.C_MOT_INPUT_DIGITAL_5K                   # digital switch with 5k pull up
+            elif (mode, digital) == (ftTXT.C_RESISTOR,   ftTXT.C_ANALOG ): # ftrobopy.resistor
+              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_5K                    # analog resistance with 5k pull up
+            elif (mode, digital) == (ftTXT.C_VOLTAGE,    ftTXT.C_ANALOG ): # ftrobopy.voltage
+              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE               # analog voltage (-10V to 10V)
+            elif mode == ftTXT.C_ULTRASONIC:                               # ftrobopy.ultrasonic
+              direct_mode = ftTXT.C_MOT_INPUT_ULTRASONIC                   # ultrasonic for both C_ANALOG and C_DIGITAL
+            else:
+              # the following two are not defined on motor shield and fall back to default case (?)
+              # (mode, digital) == (C_RESISTOR2,  C_ANALOG ): # ftrobopy.resistor2
+              # (mode, digital) == (C_RESISTOR2,  C_DIGITAL): # ftrobopy.trailfollower
+              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE
+        
+            inp[k/2] |= (direct_mode & 0x0F) << (4 * (k%2))
+          fields.append(inp[0])
+          fields.append(inp[1])
+          fields.append(inp[2])
+          fields.append(inp[3])
+          fmtstr += 'BBBB'
+          fields.append(0) # CRC (not used ?)
+          fmtstr += 'H'
+          fields.append(0)
+          fields.append(0)
+          fields.append(0)
+          fields.append(0)
+          fields.append(0)
+          fields.append(0)
+          fmtstr += 'BBBBBB' # dummy bytes to fill up structure to 15 bytes in total (minimum ?)
+          buflen = struct.calcsize(fmtstr)
+          fields[1] = buflen # second byte of buffer must contain length of buffer (see above)
+          buf    = struct.pack(fmtstr, *fields)
+          self._txt._ser_ms.write(buf)
+          data   = self._txt._ser_ms.read(len(buf))
+
+        #
+        # transfer parameter data from TXT to motor shield
+        #
+        fields = []
+        fmtstr = '<' # little endian
+        fields.append(ftTXT.C_MOT_CMD_EXCHANGE_DATA)
+        fields.append(0) # number of bytes to transfer will be set below
+        fields.append(self._txt._cycle_count)
+        fields.append(0) # bit pattern of connected txt extension modules, 0 = only master
+        fmtstr += 'BBBB'
+        
+        # pwm data
+        #
+        for k in range(8):
+          if self._txt._pwm[k] == 512:
+            pwm = 255
+          else:
+            pwm = self._txt._pwm[k] / 2
+          fields.append(pwm)
+          fmtstr += 'B'
+
+        # synchronization data (for encoder motors)
+        #
+        # low byte: M1:0000 M2:0000, high byte: M3:0000 M4:0000
+        # Mx = 0000      : no synchronization
+        # Mx = 1 - 4     : synchronize to motor n
+        # Mx = 5 - 8     : "error injection" into synchronization to allow for closed loops (together with distance values)
+        S = self._txt.getMotorSyncMaster()
+        sync_low  = (S[0] & 0x0F) | ((S[1] & 0x0F) << 4)
+        sync_high = (S[2] & 0x0F) | ((S[3] & 0x0F) << 4)
+        fields.append(sync_low)
+        fields.append(sync_high)
+        fmtstr += 'BB'
+
+        # cmd id data
+        #
+        # "counter reset cmd id" (bits 0-2) of 4 counters and "motor cmd id" (bits 0-2) of 4 motors
+        # are packed into 3 bytes + 1 reserve byte = 1 32bit unsigned integer
+        # lowest byte  : c3 c3 c2 c2 c2 c1 c1 c1 (bit7 .. bit0)
+        # next byte    : m2 m1 m1 m1 c4 c4 c4 c3 (bit7 .. bit0)
+        # next byte    : m4 m4 m4 m3 m3 m3 m2 m2 (bit7 .. bit 0)
+        # highest byte : 00 00 00 00 00 00 00 00 (reserved byte)
+        M = self._txt.getMotorCmdId()
+        C = self._txt.getCounterCmdId()
+        b0  =  C[0] & 0x07
+        b0 |= (C[1] & 0x07) << 3
+        b0 |= (C[2] & 0x03) << 6
+        b1  = (C[2] & 0x04) >> 2
+        b1 |= (C[3] & 0x07) << 1
+        b1 |= (M[0] & 0x07) << 4
+        b1 |= (M[1] & 0x01) << 7
+        b2  = (M[1] & 0x06) >> 1
+        b2 |= (M[2] & 0x07) << 2
+        b2 |= (M[3] & 0x07) << 5
+        fields.append(b0)
+        fields.append(b1)
+        fields.append(b2)
+        fields.append(0)
+        fmtstr += 'BBBB'
+
+        # distance counters
+        #
+        D = self._txt.getMotorDistance()
+        fields.append(D[0]) # distance counter 1
+        fields.append(D[1]) # distance counter 2
+        fields.append(D[2]) # distance counter 3
+        fields.append(D[3]) # distance counter 4
+        fmtstr += 'HHHH'
+
+        # reserve bytes
+        #
+        fields.append(0)
+        fields.append(0)
+        fields.append(0)
+        fields.append(0)
+        fmtstr += 'BBBB'
+        
+        # more filler bytes
+        #
+        # the length of the transmitted data block (from the txt to the motor shield)
+        # has to be at least as large as the length of the expected data block
+        # (the answer of the motor shield will never be longer than the initial send)
+        for k in range(12):
+          fields.append(0)
+          fmtstr += 'B'
+
+        # crc
+        #
+        # it seems that the crc is not used on the motor shield
+        fields.append(0)
+        fmtstr += 'H'
+        
+        buflen    = struct.calcsize(fmtstr)
+        fields[1] = buflen
+        buf       = struct.pack(fmtstr, *fields)
+        self._txt._ser_ms.write(buf)
+        data      = self._txt._ser_ms.read(len(buf))
+        # the answer of the motor shield has the following format
+        #
+        fmtstr  = '<'
+        fmtstr += 'B'    # [0]     command code
+        fmtstr += 'B'    # [1]     length of data block
+        fmtstr += 'B'    # [2]     cycle counter
+        fmtstr += 'B'    # [3]     bit pattern of connected txt extension modules, 0 = only master
+        fmtstr += 'B'    # [4]     digital input bits
+        fmtstr += 'BBBB' # [5:9]   analog inputs I1-I4 bits 0-7
+        fmtstr += 'BBB'  # [9:12]  analog inputs I1-I4 bits 8-12 : 22111111 33332222 44444433
+        fmtstr += 'BBBB' # [12:16] analog inputs I5-I8 bits 0-7
+        fmtstr += 'BBB'  # [16:19] analog inputs I5-I8 bits 8-12 : 66555555 77776666 88888877
+        fmtstr += 'B'    # [19]    voltage power supply analog bits 0-7
+        fmtstr += 'B'    # [20]    temperature analog bits 0-7
+        fmtstr += 'B'    # [21]    pwr and temp bits 8-12: ttpp pppp
+        fmtstr += 'B'    # [22]    reference voltage analog bits 0-7
+        fmtstr += 'B'    # [23]    extension voltage VBUS analog bits 0-7
+        fmtstr += 'B'    # [24]    ref and ext analog bits 8-12 : eeee rrrr
+        fmtstr += 'B'    # [25]    bit pattern of fast counters (bit0=C1 .. bit3=C2, bit4-7 not used)
+                         #         specifies, if fast counter value changed since last data exchange
+        fmtstr += 'H'    # [26]    counter 1 value
+        fmtstr += 'H'    # [27]    counter 2 value
+        fmtstr += 'H'    # [28]    counter 3 value
+        fmtstr += 'H'    # [29]    counter 4 value
+        fmtstr += 'B'    # [30]    ir byte 0
+        fmtstr += 'B'    # [31]    ir byte 1
+        fmtstr += 'B'    # [32]    ir byte 2
+        fmtstr += 'B'    # [33]    motor cmd id (?)
+        fmtstr += 'B'    # [34]    motor cmd id and counter reset cmd id (?)
+        fmtstr += 'B'    # [35]    counter reset cmd id (?)
+        fmtstr += 'B'    # [36]    (?)
+        fmtstr += 'B'    # [37]    reserve byte 1
+        fmtstr += 'BB'   # [38:39] 2 byte crc (not used)
+        
+        if len(data) == struct.calcsize(fmtstr):
+          response = struct.unpack(fmtstr, data)
+        else:
+          response = ['i', [0] * len(data)]
+  
+        #
+        # convert received data and write to ftrobopy data structures
+        #
+        
+        # inputs
+        #
+        m, i = self._txt.getConfig()
+        for k in range(8):
+          if i[k][1]==ftTXT.C_DIGITAL:
+            if response[4] & (1<<k):
+              self._txt._current_input[k] = 1
+            else:
+              self._txt._current_input[k] = 0
+          else:
+            if k == 0:
+              self._txt._current_input[k] = response[5]  + 256 * (response[9] & 0x3F)
+            elif k == 1:
+              self._txt._current_input[k] = response[6]  + 256 * (((response[9]  >> 6) & 0x03) + (response[10] << 2) & 0x3C)
+            elif k == 2:
+              self._txt._current_input[k] = response[7]  + 256 * (((response[10] >> 4) & 0x0F) + (response[11] << 4) & 0x30)
+            elif k == 3:
+              self._txt._current_input[k] = response[8]  + 256 * ((response[11]  >> 2) & 0x3F)
+            elif k == 4:
+              self._txt._current_input[k] = response[12] + 256 * (response[16] & 0x3F)
+            elif k == 5:
+              self._txt._current_input[k] = response[13] + 256 * (((response[16] >> 6) & 0x03) + (response[17] << 2) & 0x3C)
+            elif k == 6:
+              self._txt._current_input[k] = response[14] + 256 * (((response[17] >> 4) & 0x0F) + (response[18] << 4) & 0x30)
+            elif k == 7:
+              self._txt._current_input[k] = response[15] + 256 * ((response[18]  >> 2) & 0x3F)
+        
+        # battery power (volt) and internal TXT temperature (unused ?)
+        #
+        self._current_power       = response[19] + 256 * (response[21] & 0x3F )
+        self._current_temperature = response[20] + 256 * ((response[21] >> 6 ) & 0x03)
+        
+        # reference voltage and extension voltage (unused ?)
+        #
+        self._current_reference_volt = response[22] + 256 * (response[24] & 0x0F)
+        self._current_extension_volt = response[23] + 256 * ((response[24] >> 4) & 0x0F)
+         
+        # signals which fast counters did change since last data exchange
+        #
+        for k in range(4):
+          if response[25] & (1<<k):
+            self._txt._current_counter[k] = 1
+          else:
+            self._txt._current_counter[k] = 0
+        self._txt.debug = response[25]
+            
+        # current values of fast counters
+        #
+        self._txt._current_counter_value = response[26:30]
+
+        # still missing here:
+        #
+        # - ir data
+        # - motor cmd id (?)
+        # - counter reset cmd id (?)
+
+        self._txt._update_status = 1
+        self._txt._exchange_data_lock.release()
+
+      else:
+       try:
         if (self._txt_sleep_between_updates > 0):
           time.sleep(self._txt_sleep_between_updates)
         exchange_ok = False
@@ -1259,14 +1577,14 @@ class ftTXTexchange(threading.Thread):
         self._txt._current_ir             = response[26:52]
         self._txt.handle_data(self._txt)
         self._txt._exchange_data_lock.release()
-      except Exception as err:
+       except Exception as err:
         self._txt_stop_event.set()
         print('Network error ',err)
         self._txt.handle_error('Network error', err)
         return
-      self._txt._exchange_data_lock.acquire()
-      self._txt._update_status = 1
-      self._txt._exchange_data_lock.release()
+       self._txt._exchange_data_lock.acquire()
+       self._txt._update_status = 1
+       self._txt._exchange_data_lock.release()
     return
 
 class camera(threading.Thread):
@@ -1365,6 +1683,9 @@ class camera(threading.Thread):
 
     >>> pic = txt.getCameraFrame()
     """
+    if self._directmode:
+      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
+      return
     #data = []
     self._camera_data_lock.acquire()
     #data[:] = self._m_framedata[:]
@@ -1389,9 +1710,12 @@ class ftrobopy(ftTXT):
     * **play_sound**
     * **stop_sound**
     * **sound_finished**
+
+    (die Sound-Routinen stehen nur in den Socket-Betriebsarten zur Verfuegung, nicht im Direktmodus)
     
   """
-  def __init__(self, host, port, update_interval=0.01):
+  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01):
+
     """
       Initialisierung der ftrobopy Klasse:
       
@@ -1406,6 +1730,7 @@ class ftrobopy(ftTXT):
       - '192.168.7.2' im USB Offline-Betrieb
       - '192.168.8.2' im WLAN Offline-Betrieb
       - '192.168.9.2' im Bluetooth Offline-Betreib
+      - 'direct' im Seriellen Online-Betrieb mit direkter Ansteuerung der Motor-Platine des TXT
       
       :param port: Portnummer (normalerweise 65000)
       :type port: integer
@@ -1420,7 +1745,10 @@ class ftrobopy(ftTXT):
       >>> import ftrobopy
       >>> ftrob = ftrobopy.ftrobopy('192.168.7.2', 65000)
     """
-    ftTXT.__init__(self, host, port)
+    if host[:6] == 'direct':
+      ftTXT.__init__(self, directmode=True)
+    else:
+      ftTXT.__init__(self, host, port)
     self.queryStatus()
     if self.getVersionNumber() < 0x4010500:
       print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
@@ -1560,13 +1888,23 @@ class ftrobopy(ftTXT):
         self._outer._exchange_data_lock.release()
       def setDistance(self, distance, syncto=None):
         self._outer._exchange_data_lock.acquire()
-        self._outer.setMotorDistance(self._output-1, distance)
-        self._distance=distance
         if syncto:
+          self._distance     = distance
+          syncto._distance   = distance
+          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1)
+          syncto._command_id = syncto._outer.getCurrentMotorCmdId(self._output-1)
+          self._outer.setMotorDistance(self._output-1, distance)
+          self._outer.setMotorDistance(syncto._output-1, distance)
           self._outer.setMotorSyncMaster(self._output-1, syncto._output)
           self._outer.setMotorSyncMaster(syncto._output-1, self._output)
-        self._command_id=self._outer.getCurrentMotorCmdId(self._output-1)
-        self._outer.incrMotorCmdId(self._output-1)
+          self._outer.incrMotorCmdId(self._output-1)
+          self._outer.incrMotorCmdId(syncto._output-1)
+        else:
+          self._distance     = distance
+          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1)
+          self._outer.setMotorDistance(self._output-1, distance)
+          self._outer.setMotorSyncMaster(self._output-1, 0)
+          self._outer.incrMotorCmdId(self._output-1)
         self._outer._exchange_data_lock.release()
       def finished(self):
         old = self._outer.getCurrentMotorCmdId(self._output-1)
@@ -1665,45 +2003,36 @@ class ftrobopy(ftTXT):
     self.updateConfig()
     return inp(self, num)
   
-  def resistor(self, num, range='5k'):
+  def resistor(self, num):
     """
-      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.  Zwei Messbereiche werden unterstuetzt: 10 Ohm - 5kOhm, oder  30 Ohm bis 15 kOhm. Der gewuenschte Messbereich wird durch das optionale Argument **range** ausgewaehlt (der Defaultwert is '5k').
-
-      Fuer den '5k' Messbereich liegt der Rueckgabewert zwischen 10 Ohm und 4999 Ohm. Der Rueckgabewert 5000 steht fuer einen Widerstand ausserhalb des gueltigen Wertebereichs.
+      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.
     
-      Fuer den '15k' Messbereich liegt der Rueckgabewert zwischen 30 Ohm und 14999 Ohm. Der Rueckgabewert 15000 steht fuer einen Widerstand ausserhalb des gueltigen Wertebereichs.
-
       Anwendungsbeispiel:
     
-      >>> R1 = ftrob.resistor(7, '5k')
-      >>> R2 = ftrob.resistor(3, '15k')
-      >>> R3 = ftrob.resistor(1)  # uses default of '5k'
+      >>> R = ftrob.resistor(7)
     
       Das so erzeugte Widerstands-Objekt hat folgende Methoden:
     
-      **resistance** ()
+      **value** ()
     
-      Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
+      Mit dieser Methode wird der Wiederstand abgefragt.
     
-      :return: Der am Eingang anliegende Widerstandswert in Ohm (zwischen 10 und 5000, oder 30 und 15000)
+      :return: Der am Eingang anliegende Wiederstandswert
       :rtype: float
     
       Anwendungsbeispiel:
     
-      >>> print("Der Widerstand betraegt ", R.resistance())
+      >>> print("Der Wiederstand betraegt ", R.value())
     """
     class inp(object):
       def __init__(self, outer, num):
         self._outer=outer
         self._num=num
-      def resistance(self):
+      def value(self):
         return self._outer.getCurrentInput(num-1)
   
     M, I = self.getConfig()
-    mode = ftTXT.C_RESISTOR
-    if range == '15k':
-      mode = ftTXT.C_RESISTOR2
-    I[num-1]= (mode, ftTXT.C_ANALOG)
+    I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
@@ -1753,16 +2082,16 @@ class ftrobopy(ftTXT):
       
       Das so erzeugte Spannungs-Mess-Objekt hat folgende Methoden:
       
-      **voltage** ()
+      **value** ()
       
-      Mit dieser Methode wird die anliegende Spannung (in Millivolt) abgefragt.
+      Mit dieser Methode wird die anliegende Spannung (in Volt) abgefragt.
       
-      :return: Die am Eingang anliegene Spannung (in Millivolt)
+      :return: Die am Eingang anliegene Spannung (in Volt)
       :rtype: float
       
       Anwendungsbeispiel:
       
-      >>> print("Die Spannung betraegt ", batterie.voltage(), " Millivolt.")
+      >>> print("Die Spannung betraegt ", batterie.value(), " Volt.")
       """
     class inp(object):
       def __init__(self, outer, num):
@@ -1773,6 +2102,40 @@ class ftrobopy(ftTXT):
     
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
+    self.setConfig(M, I)
+    self.updateConfig()
+    return inp(self, num)
+
+  def resistor2(self, num):
+    """
+    Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Ohmschen Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist.
+    
+    Anwendungsbeispiel:
+    
+    >>> R = ftrob.resistor2(7)
+    
+    Das so erzeugte Widerstands-Objekt hat folgende Methoden:
+    
+    **value** ()
+    
+    Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
+    
+    :return: Der am Eingang gemessene Widerstand in Ohm
+    :rtype: float
+    
+    Anwendungsbeispiel:
+    
+    >>> print("Der Widerstand betraegt ", R.value(), " Ohm.")
+    """
+    class inp(object):
+      def __init__(self, outer, num):
+        self._outer=outer
+        self._num=num
+      def resistance(self):
+        return self._outer.getCurrentInput(num-1)
+    
+    M, I = self.getConfig()
+    I[num-1]= (ftTXT.C_RESISTOR2, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
@@ -1823,6 +2186,9 @@ class ftrobopy(ftTXT):
       >>> while not ftrob.sound_finished():
             pass
     """
+    if self._directmode:
+      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
+      return
     if time.time()-self._sound_timer > self._sound_length:
       return True
     else:
@@ -1836,6 +2202,9 @@ class ftrobopy(ftTXT):
       
       >>> ftrob.play_sound(27, 5) # 5 Sekunden lang Fahrgeraeusche abspielen
     """
+    if self._directmode:
+      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
+      return
     self._sound_length=seconds
     if time.time()-self._sound_timer < self._sound_length:
       self._exchange_data_lock.acquire()
@@ -1856,6 +2225,9 @@ class ftrobopy(ftTXT):
       
       >>> ftrob.stop_sound()
     """
+    if self._directmode:
+      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
+      return
     self._exchange_data_lock.acquire()
     self.setSoundIndex(0)
     self.setSoundRepeat(1)
