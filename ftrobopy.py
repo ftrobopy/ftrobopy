@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.5"
+__version__     = "1.51"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "11/12/2016"
+__date__        = "11/14/2016"
 
 def version():
   """
@@ -121,7 +121,7 @@ class ftTXT(object):
       >>> txt = ftrobopy.ftTXT('192.168.7.2', 65000)
     """
     self._m_devicename = b''
-    self._m_version    = b''
+    self._m_version    = 0
     self._host=host
     self._port=port
     self._ser_port=serport
@@ -213,8 +213,9 @@ class ftTXT(object):
        >>> name, version = txt.queryStatus()
     """
     if self._directmode:
+      # not sure how to detect version yet, just set standard value
       self._m_devicename = 'TXT direct'
-      self._m_version    = '0x4010500'
+      self._m_version    =  0x4010500
       self._m_firmware   = 'firmware version not detected'
       return self._m_devicename, self._m_version
     m_id         = 0xDC21219A
@@ -1289,8 +1290,8 @@ class ftTXTexchange(threading.Thread):
           fields = []
           fmtstr = '<' # little endian
           fields.append(ftTXT.C_MOT_CMD_CONFIG_IO)
-          fields.append(0) # number of bytes to transfer to TXT, will be set below
           fields.append(self._txt._cycle_count) # cycle counter of transmitted and received data have to match (not yet checked here yet !)
+          fields.append(0) # only master
           fmtstr += 'BBB'
           inp     = [0, 0, 0, 0]
           for k in range(8):
@@ -1324,9 +1325,8 @@ class ftTXTexchange(threading.Thread):
           fields.append(0)
           fields.append(0)
           fields.append(0)
-          fmtstr += 'BBBBBB' # dummy bytes to fill up structure to 15 bytes in total (minimum ?)
+          fmtstr += 'BBBBBB' # dummy bytes to fill up structure to 15 bytes in total
           buflen = struct.calcsize(fmtstr)
-          fields[1] = buflen # second byte of buffer must contain length of buffer (see above)
           buf    = struct.pack(fmtstr, *fields)
           self._txt._ser_ms.write(buf)
           data   = self._txt._ser_ms.read(len(buf))
@@ -1466,7 +1466,7 @@ class ftTXTexchange(threading.Thread):
           response = struct.unpack(fmtstr, data)
         else:
           response = ['i', [0] * len(data)]
-  
+
         #
         # convert received data and write to ftrobopy data structures
         #
@@ -1500,13 +1500,13 @@ class ftTXTexchange(threading.Thread):
         
         # battery power (volt) and internal TXT temperature (unused ?)
         #
-        self._current_power       = response[19] + 256 * (response[21] & 0x3F )
-        self._current_temperature = response[20] + 256 * ((response[21] >> 6 ) & 0x03)
+        self._txt._current_power       = response[19] + 256 * (response[21] & 0x3F )
+        self._txt._current_temperature = response[20] + 256 * ((response[21] >> 6 ) & 0x03)
         
         # reference voltage and extension voltage (unused ?)
         #
-        self._current_reference_volt = response[22] + 256 * (response[24] & 0x0F)
-        self._current_extension_volt = response[23] + 256 * ((response[24] >> 4) & 0x0F)
+        self._txt._current_reference_volt = response[22] + 256 * (response[24] & 0x0F)
+        self._txt._current_extension_volt = response[23] + 256 * ((response[24] >> 4) & 0x0F)
          
         # signals which fast counters did change since last data exchange
         #
@@ -1750,9 +1750,9 @@ class ftrobopy(ftTXT):
     else:
       ftTXT.__init__(self, host, port)
     self.queryStatus()
-    #if self.getVersionNumber() < 0x4010500:
-    #  print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
-    #  sys.exit()
+    if self.getVersionNumber() < 0x4010500:
+      print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
+      sys.exit()
     print('Connected to ', self.getDevicename(), self.getFirmwareVersion())
     for i in range(8):
       self.setPwm(i,0)
