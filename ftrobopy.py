@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.51"
+__version__     = "1.52"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
@@ -1166,6 +1166,43 @@ class ftTXT(object):
     :rtype: int
     """
     return self._port
+  
+  def getPower(self):
+    """
+    Liefert die aktuelle Spannung der angeschlossenen Stromversorgung des TXT in mV (Netzteil- oder Batterie-Spannung).
+    
+    Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
+    
+    Anwendungsbeispiel:
+    
+    >>> Spannung = getBatteryVoltage()
+    >>> if Spannung < 7900:
+    >>>   print("Warnung: die Batteriespannung des TXT ist schwach. Bitte die Batterie umgehend austauschen !")
+    
+    """
+    if self._directmode:
+      return self._current_power
+    else:
+      print("Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.")
+      return None
+
+  def getTemperature(self):
+    """
+    Liefert die aktuelle Temperatur des TXT (in einer unbekannten Einheit) zurueck.
+    
+    Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
+    
+    Anwendungsbeispiel:
+    
+    >>> Temperatur = getTemperature()
+    >>> print("Die Temperatur im innern des TXT betraegt: ", Temperatur, " (Einheit unbekannt)")
+    
+    """
+    if self._directmode:
+      return self._current_temperature
+    else:
+      print("Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.")
+      return None
 
   def SyncDataBegin(self):
     """
