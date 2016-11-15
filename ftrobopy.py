@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.53"
+__version__     = "1.54"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
@@ -181,17 +181,17 @@ class ftTXT(object):
     self._sound        = 0
     self._sound_index  = 0
     self._sound_repeat = 0
-    self._current_input          = [0,0,0,0,0,0,0,0]
-    self._current_counter        = [0,0,0,0]
-    self._current_counter_value  = [0,0,0,0]
-    self._current_counter_cmd_id = [0,0,0,0]
-    self._current_motor_cmd_id   = [0,0,0,0]
-    self._current_sound_cmd_id   = 0
-    self._current_ir             = range(26)
-    self._current_power          = 0
-    self._current_temperature    = 0
-    self._current_reference_volt = 0
-    self._current_extension_volt = 0
+    self._current_input           = [0,0,0,0,0,0,0,0]
+    self._current_counter         = [0,0,0,0]
+    self._current_counter_value   = [0,0,0,0]
+    self._current_counter_cmd_id  = [0,0,0,0]
+    self._current_motor_cmd_id    = [0,0,0,0]
+    self._current_sound_cmd_id    = 0
+    self._current_ir              = range(26)
+    self._current_power           = 0
+    self._current_temperature     = 0
+    self._current_reference_power = 0
+    self._current_extension_power = 0
     self._exchange_data_lock.release() 
 
   def isOnline(self):
@@ -1175,7 +1175,7 @@ class ftTXT(object):
     
     Anwendungsbeispiel:
     
-    >>> Spannung = getBatteryVoltage()
+    >>> Spannung = txt.getPower()
     >>> if Spannung < 7900:
     >>>   print("Warnung: die Batteriespannung des TXT ist schwach. Bitte die Batterie umgehend austauschen !")
     
@@ -1194,12 +1194,46 @@ class ftTXT(object):
     
     Anwendungsbeispiel:
     
-    >>> Temperatur = getTemperature()
+    >>> Temperatur = txt.getTemperature()
     >>> print("Die Temperatur im innern des TXT betraegt: ", Temperatur, " (Einheit unbekannt)")
     
     """
     if self._directmode:
       return self._current_temperature
+    else:
+      print("Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.")
+      return None
+
+  def getReferencePower(self):
+    """
+    Liefert die aktuelle Referenz-Spannung in mV.
+    
+    Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
+    
+    Anwendungsbeispiel:
+    
+    >>> ReferenzSpannung = txt.getReferencePower()
+    
+    """
+    if self._directmode:
+      return self._current_reference_power
+    else:
+      print("Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.")
+      return None
+
+  def getExtensionPower(self):
+    """
+    Liefert die aktuelle Spannung in mV, die am Extension Bus anliegt.
+    
+    Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
+    
+    Anwendungsbeispiel:
+    
+    >>> ExtensionSpannung = txt.getExtensionPower()
+    
+    """
+    if self._directmode:
+      return self._current_extension_power
     else:
       print("Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.")
       return None
@@ -1317,7 +1351,7 @@ class ftTXTexchange(threading.Thread):
           self._txt._cycle_count = 0
 
         self._txt._exchange_data_lock.acquire()
-        
+
         if self._txt._config_id != self._txt._config_id_old:
           self._txt._config_id_old = self._txt._config_id
           #
@@ -1325,23 +1359,29 @@ class ftTXTexchange(threading.Thread):
           # (this is only necessary, if config data has been changed, e.g. the config_id number has been increased)
           #
           fields = []
-          fmtstr = '<' # little endian
+          fmtstr = '<BBB BBBB H BBBBBB'
+          #fmtstr = '<' # little endian
           fields.append(ftTXT.C_MOT_CMD_CONFIG_IO)
           fields.append(self._txt._cycle_count) # cycle counter of transmitted and received data have to match (not yet checked here yet !)
           fields.append(0) # only master
-          fmtstr += 'BBB'
+          #fmtstr += 'BBB'
           inp     = [0, 0, 0, 0]
           for k in range(8):
             mode    = self._txt._ftX1_uni[k*3]
             digital = self._txt._ftX1_uni[k*3+1]
-            if   (mode, digital) == (ftTXT.C_SWITCH,     ftTXT.C_DIGITAL): # ftrobopy.input
-              direct_mode = ftTXT.C_MOT_INPUT_DIGITAL_5K                   # digital switch with 5k pull up
-            elif (mode, digital) == (ftTXT.C_RESISTOR,   ftTXT.C_ANALOG ): # ftrobopy.resistor
-              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_5K                    # analog resistance with 5k pull up
-            elif (mode, digital) == (ftTXT.C_VOLTAGE,    ftTXT.C_ANALOG ): # ftrobopy.voltage
-              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE               # analog voltage (-10V to 10V)
-            elif mode == ftTXT.C_ULTRASONIC:                               # ftrobopy.ultrasonic
-              direct_mode = ftTXT.C_MOT_INPUT_ULTRASONIC                   # ultrasonic for both C_ANALOG and C_DIGITAL
+            if   (mode, digital) == (ftTXT.C_SWITCH,     ftTXT.C_DIGITAL):  # ftrobopy.input
+              direct_mode = ftTXT.C_MOT_INPUT_DIGITAL_5K                    # digital switch with 5k pull up
+                                                                            # is 0 if voltage over pull up is < 1600 mV (switch closed) else 1 (switch open)
+            elif (mode, digital) == (ftTXT.C_VOLTAGE,    ftTXT.C_DIGITAL ): # currently not used in ftrobopy
+              direct_mode = ftTXT.C_MOT_INPUT_DIGITAL_VOLTAGE               # digital voltage is 1 if Input > 600 mV else 0
+            elif (mode, digital) == (ftTXT.C_RESISTOR,   ftTXT.C_ANALOG ):  # ftrobopy.resistor
+              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_5K                     # analog resistance with 5k pull up [0 - 15K Ohm]
+                                                                            # unit of return value is [Ohm]
+            elif (mode, digital) == (ftTXT.C_VOLTAGE,    ftTXT.C_ANALOG ):  # ftrobopy.voltage
+              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE                # analog voltage [5 mV - 10V]
+                                                                            # bit in response[4] for digital input is also set to 1 if value > 600 mV else 0
+            elif mode == ftTXT.C_ULTRASONIC:                                # ftrobopy.ultrasonic
+              direct_mode = ftTXT.C_MOT_INPUT_ULTRASONIC                    # ultrasonic for both C_ANALOG and C_DIGITAL
             else:
               # the following two are not defined on motor shield and fall back to default case (?)
               # (mode, digital) == (C_RESISTOR2,  C_ANALOG ): # ftrobopy.resistor2
@@ -1353,16 +1393,16 @@ class ftTXTexchange(threading.Thread):
           fields.append(inp[1])
           fields.append(inp[2])
           fields.append(inp[3])
-          fmtstr += 'BBBB'
+          #fmtstr += 'BBBB'
           fields.append(0) # CRC (not used ?)
-          fmtstr += 'H'
+          #fmtstr += 'H'
           fields.append(0)
           fields.append(0)
           fields.append(0)
           fields.append(0)
           fields.append(0)
           fields.append(0)
-          fmtstr += 'BBBBBB' # dummy bytes to fill up structure to 15 bytes in total
+          #fmtstr += 'BBBBBB' # dummy bytes to fill up structure to 15 bytes in total
           buflen = struct.calcsize(fmtstr)
           buf    = struct.pack(fmtstr, *fields)
           self._txt._ser_ms.write(buf)
@@ -1372,12 +1412,13 @@ class ftTXTexchange(threading.Thread):
         # transfer parameter data from TXT to motor shield
         #
         fields = []
-        fmtstr = '<' # little endian
+        fmtstr = '<BBBB BBBBBBBB BB BBBB HHHH BBBB BBBBBBBBBBBB H'
+        #fmtstr = '<' # little endian
         fields.append(ftTXT.C_MOT_CMD_EXCHANGE_DATA)
         fields.append(0) # number of bytes to transfer will be set below
         fields.append(self._txt._cycle_count)
         fields.append(0) # bit pattern of connected txt extension modules, 0 = only master
-        fmtstr += 'BBBB'
+        #fmtstr += 'BBBB'
         
         # pwm data
         #
@@ -1387,7 +1428,7 @@ class ftTXTexchange(threading.Thread):
           else:
             pwm = int(self._txt._pwm[k] / 2)
           fields.append(pwm)
-          fmtstr += 'B'
+          #fmtstr += 'B'
 
         # synchronization data (for encoder motors)
         #
@@ -1400,7 +1441,7 @@ class ftTXTexchange(threading.Thread):
         sync_high = (S[2] & 0x0F) | ((S[3] & 0x0F) << 4)
         fields.append(sync_low)
         fields.append(sync_high)
-        fmtstr += 'BB'
+        #fmtstr += 'BB'
 
         # cmd id data
         #
@@ -1426,7 +1467,7 @@ class ftTXTexchange(threading.Thread):
         fields.append(b1)
         fields.append(b2)
         fields.append(0)
-        fmtstr += 'BBBB'
+        #fmtstr += 'BBBB'
 
         # distance counters
         #
@@ -1435,7 +1476,7 @@ class ftTXTexchange(threading.Thread):
         fields.append(D[1]) # distance counter 2
         fields.append(D[2]) # distance counter 3
         fields.append(D[3]) # distance counter 4
-        fmtstr += 'HHHH'
+        #fmtstr += 'HHHH'
 
         # reserve bytes
         #
@@ -1443,7 +1484,7 @@ class ftTXTexchange(threading.Thread):
         fields.append(0)
         fields.append(0)
         fields.append(0)
-        fmtstr += 'BBBB'
+        #fmtstr += 'BBBB'
         
         # more filler bytes
         #
@@ -1452,13 +1493,13 @@ class ftTXTexchange(threading.Thread):
         # (the answer of the motor shield will never be longer than the initial send)
         for k in range(12):
           fields.append(0)
-          fmtstr += 'B'
+          #fmtstr += 'B'
 
         # crc
         #
         # it seems that the crc is not used on the motor shield
         fields.append(0)
-        fmtstr += 'H'
+        #fmtstr += 'H'
         
         buflen    = struct.calcsize(fmtstr)
         fields[1] = buflen
@@ -1467,38 +1508,40 @@ class ftTXTexchange(threading.Thread):
         data      = self._txt._ser_ms.read(len(buf))
         # the answer of the motor shield has the following format
         #
-        fmtstr  = '<'
-        fmtstr += 'B'    # [0]     command code
-        fmtstr += 'B'    # [1]     length of data block
-        fmtstr += 'B'    # [2]     cycle counter
-        fmtstr += 'B'    # [3]     bit pattern of connected txt extension modules, 0 = only master
-        fmtstr += 'B'    # [4]     digital input bits
-        fmtstr += 'BBBB' # [5:9]   analog inputs I1-I4 bits 0-7
-        fmtstr += 'BBB'  # [9:12]  analog inputs I1-I4 bits 8-12 : 22111111 33332222 44444433
-        fmtstr += 'BBBB' # [12:16] analog inputs I5-I8 bits 0-7
-        fmtstr += 'BBB'  # [16:19] analog inputs I5-I8 bits 8-12 : 66555555 77776666 88888877
-        fmtstr += 'B'    # [19]    voltage power supply analog bits 0-7
-        fmtstr += 'B'    # [20]    temperature analog bits 0-7
-        fmtstr += 'B'    # [21]    pwr and temp bits 8-12: ttpp pppp
-        fmtstr += 'B'    # [22]    reference voltage analog bits 0-7
-        fmtstr += 'B'    # [23]    extension voltage VBUS analog bits 0-7
-        fmtstr += 'B'    # [24]    ref and ext analog bits 8-12 : eeee rrrr
-        fmtstr += 'B'    # [25]    bit pattern of fast counters (bit0=C1 .. bit3=C2, bit4-7 not used)
+        #fmtstr  = '<'
+        #fmtstr += 'B'    # [0]     command code
+        #fmtstr += 'B'    # [1]     length of data block
+        #fmtstr += 'B'    # [2]     cycle counter
+        #fmtstr += 'B'    # [3]     bit pattern of connected txt extension modules, 0 = only master
+        #fmtstr += 'B'    # [4]     digital input bits
+        #fmtstr += 'BBBB' # [5:9]   analog inputs I1-I4 bits 0-7
+        #fmtstr += 'BBB'  # [9:12]  analog inputs I1-I4 bits 8-12 : 22111111 33332222 44444433
+        #fmtstr += 'BBBB' # [12:16] analog inputs I5-I8 bits 0-7
+        #fmtstr += 'BBB'  # [16:19] analog inputs I5-I8 bits 8-12 : 66555555 77776666 88888877
+        #fmtstr += 'B'    # [19]    voltage power supply analog bits 0-7
+        #fmtstr += 'B'    # [20]    temperature analog bits 0-7
+        #fmtstr += 'B'    # [21]    pwr and temp bits 8-12: ttpp pppp
+        #fmtstr += 'B'    # [22]    reference voltage analog bits 0-7
+        #fmtstr += 'B'    # [23]    extension voltage VBUS analog bits 0-7
+        #fmtstr += 'B'    # [24]    ref and ext analog bits 8-12 : eeee rrrr
+        #fmtstr += 'B'    # [25]    bit pattern of fast counters (bit0=C1 .. bit3=C2, bit4-7 not used)
                          #         specifies, if fast counter value changed since last data exchange
-        fmtstr += 'H'    # [26]    counter 1 value
-        fmtstr += 'H'    # [27]    counter 2 value
-        fmtstr += 'H'    # [28]    counter 3 value
-        fmtstr += 'H'    # [29]    counter 4 value
-        fmtstr += 'B'    # [30]    ir byte 0
-        fmtstr += 'B'    # [31]    ir byte 1
-        fmtstr += 'B'    # [32]    ir byte 2
-        fmtstr += 'B'    # [33]    motor cmd id (?)
-        fmtstr += 'B'    # [34]    motor cmd id and counter reset cmd id (?)
-        fmtstr += 'B'    # [35]    counter reset cmd id (?)
-        fmtstr += 'B'    # [36]    (?)
-        fmtstr += 'B'    # [37]    reserve byte 1
-        fmtstr += 'BB'   # [38:39] 2 byte crc (not used)
-        
+        #fmtstr += 'H'    # [26]    counter 1 value
+        #fmtstr += 'H'    # [27]    counter 2 value
+        #fmtstr += 'H'    # [28]    counter 3 value
+        #fmtstr += 'H'    # [29]    counter 4 value
+        #fmtstr += 'B'    # [30]    ir byte 0
+        #fmtstr += 'B'    # [31]    ir byte 1
+        #fmtstr += 'B'    # [32]    ir byte 2
+        #fmtstr += 'B'    # [33]    motor cmd id (?)
+        #fmtstr += 'B'    # [34]    motor cmd id and counter reset cmd id (?)
+        #fmtstr += 'B'    # [35]    counter reset cmd id (?)
+        #fmtstr += 'B'    # [36]    (?)
+        #fmtstr += 'B'    # [37]    reserve byte 1
+        #fmtstr += 'BB'   # [38:39] 2 byte crc (not used)
+
+        fmtstr   = '<BBBBB BBBB BBB BBBB BBB BBBBBBB HHHH BBBBBBBB BB'
+
         if len(data) == struct.calcsize(fmtstr):
           response = struct.unpack(fmtstr, data)
         else:
@@ -1535,15 +1578,15 @@ class ftTXTexchange(threading.Thread):
             elif k == 7:
               self._txt._current_input[k] = response[15] + 256 * ((response[18]  >> 2) & 0x3F)
         
-        # battery power (volt) and internal TXT temperature (unused ?)
+        # power (of battery and/or main power supply) in volt and internal TXT temperature
         #
         self._txt._current_power       = response[19] + 256 * (response[21] & 0x3F )
         self._txt._current_temperature = response[20] + 256 * ((response[21] >> 6 ) & 0x03)
         
-        # reference voltage and extension voltage (unused ?)
+        # reference voltage and extension voltage
         #
-        self._txt._current_reference_volt = response[22] + 256 * (response[24] & 0x0F)
-        self._txt._current_extension_volt = response[23] + 256 * ((response[24] >> 4) & 0x0F)
+        self._txt._current_reference_power = response[22] + 256 * (response[24] & 0x0F)
+        self._txt._current_extension_power = response[23] + 256 * ((response[24] >> 4) & 0x0F)
          
         # signals which fast counters did change since last data exchange
         #
@@ -1561,8 +1604,8 @@ class ftTXTexchange(threading.Thread):
         # still missing here:
         #
         # - ir data
-        # - motor cmd id (?)
-        # - counter reset cmd id (?)
+        # - motor cmd id
+        # - counter reset cmd id
 
         self._txt._update_status = 1
         self._txt._exchange_data_lock.release()
