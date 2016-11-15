@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.52"
+__version__     = "1.53"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "11/14/2016"
+__date__        = "11/15/2016"
 
 def version():
   """
@@ -1783,6 +1783,25 @@ class ftrobopy(ftTXT):
       >>> ftrob = ftrobopy.ftrobopy('192.168.7.2', 65000)
     """
     if host[:6] == 'direct':
+      # check if running on FT-txt
+      if str.find(socket.gethostname(), 'FT-txt') < 0:
+        print("ftrobopy konnte nicht initialisiert werden.")
+        print("Der 'direct'-Modus kann nur im Download/Offline-Betrieb auf dem TXT verwendet werden !")
+        return None
+      # check if TxtMainControl is running, if yes quit
+      pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
+      for pid in pids:
+        try:
+          line = open(os.path.join('/proc', pid, 'cmdline'), 'rb').read()
+          if line.decode('utf-8').find('TxtControlMain') >= 0:
+            print("ftrobopy konnte nicht initialisiert werden.")
+            print("Der Prozess 'TxtControlMain' muss vor der Verwendung des 'direct'-Modus beendet werden !")
+            return None
+        except IOError:
+          continue
+        except:
+          print("ftrobopy konnte nicht im 'direct'-Modus initialisiert werden.")
+          return
       ftTXT.__init__(self, directmode=True)
     else:
       ftTXT.__init__(self, host, port)
