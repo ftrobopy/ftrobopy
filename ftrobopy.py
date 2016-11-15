@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.54"
+__version__     = "1.55"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
@@ -2120,7 +2120,7 @@ class ftrobopy(ftTXT):
       Mit dieser Methode wird der Wiederstand abgefragt.
     
       :return: Der am Eingang anliegende Wiederstandswert
-      :rtype: float
+      :rtype: integer
     
       Anwendungsbeispiel:
     
@@ -2184,16 +2184,16 @@ class ftrobopy(ftTXT):
       
       Das so erzeugte Spannungs-Mess-Objekt hat folgende Methoden:
       
-      **value** ()
+      **voltage** ()
       
       Mit dieser Methode wird die anliegende Spannung (in Volt) abgefragt.
       
       :return: Die am Eingang anliegene Spannung (in Volt)
-      :rtype: float
+      :rtype: integer
       
       Anwendungsbeispiel:
       
-      >>> print("Die Spannung betraegt ", batterie.value(), " Volt.")
+      >>> print("Die Spannung betraegt ", batterie.voltage(), " Volt.")
       """
     class inp(object):
       def __init__(self, outer, num):
@@ -2201,6 +2201,60 @@ class ftrobopy(ftTXT):
         self._num=num
       def voltage(self):
         return self._outer.getCurrentInput(num-1)
+    
+    M, I = self.getConfig()
+    I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
+    self.setConfig(M, I)
+    self.updateConfig()
+    return inp(self, num)
+
+  def colorsensor(self, num):
+    """
+      Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des fischertechnik Farbsensors.
+      Beim Farbsensor handelt es sich um einen Fototransistor, der das von einer Oberflaeche
+      reflektierte Licht einer roten Lichtquelle misst. Der Abstand zwischen Farbsensor und zu
+      bestimmender Oberflaeche sollte zwischen 5mm und 10mm liegen.
+      Die Farben 'weiss', 'rot' und 'blau' koennen mit dieser Methode zuverlaessig unterschieden werden.
+      
+      Der zurueckgelieferte Messwert ist die am Fototransistor anliegende Spannung in mV.
+      Die colorsensor() Funktion ist im Prinzip identisch zur voltage() Funktion.
+      
+      Das so erzeugte Farbsensor-Objekt hat folgende Methoden:
+
+      **value** ()
+      
+      Mit dieser Methode wird die anliegende Spannung (in mV) abgefragt.
+      
+      :return: Der erkannte Farbwert als Integer Zahl
+      :rtype: integer
+      
+      **color** ()
+      
+      Mit dieser Methode wird die erkannte Farbe als Wort zurueckgeliefert.
+
+      :return: Die erkannte Farbe
+      :rtype: string
+      
+      Anwendungsbeispiel:
+      
+      >>> farbsensor = txt.colorsensor(5)
+      >>> print("Der Farbwert ist      : ", farbsensor.value())
+      >>> print("Die erkannte Farbe ist: ", farbsensor.color())
+      """
+    class inp(object):
+      def __init__(self, outer, num):
+        self._outer=outer
+        self._num=num
+      def value(self):
+        return self._outer.getCurrentInput(num-1)
+      def color(self):
+        c = self._outer.getCurrentInput(num-1)
+        if c < 200:
+          return 'weiss'
+        elif c < 1000:
+          return 'rot'
+        else:
+          return 'blau'
     
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
