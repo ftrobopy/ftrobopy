@@ -8,6 +8,7 @@
 from __future__ import print_function
 from os import system
 import os
+import platform
 import sys
 import socket
 import serial
@@ -20,11 +21,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.55"
+__version__     = "1.56"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "11/15/2016"
+__date__        = "11/18/2016"
 
 def version():
   """
@@ -1794,7 +1795,7 @@ class ftrobopy(ftTXT):
     (die Sound-Routinen stehen nur in den Socket-Betriebsarten zur Verfuegung, nicht im Direktmodus)
     
   """
-  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01):
+  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01, special_connection='127.0.0.1'):
 
     """
       Initialisierung der ftrobopy Klasse:
@@ -1811,12 +1812,16 @@ class ftrobopy(ftTXT):
       - '192.168.8.2' im WLAN Offline-Betrieb
       - '192.168.9.2' im Bluetooth Offline-Betreib
       - 'direct' im Seriellen Online-Betrieb mit direkter Ansteuerung der Motor-Platine des TXT
+      - 'auto' automatisch den passenden Modus finden.
       
       :param port: Portnummer (normalerweise 65000)
       :type port: integer
 
       :param update_interval: Zeit (in Sekunden) zwischen zwei Aufrufen des Datenaustausch-Prozesses mit dem TXT
       :type update_intervall: float
+
+      :param special_connection: IP-Adresse des TXT, falls dieser ueber einen Router im WLAN-Netz angesprochen wird (z.B. '10.0.2.7')
+      :type special_connection: string
 
       :return: Leer
       
@@ -1825,6 +1830,55 @@ class ftrobopy(ftTXT):
       >>> import ftrobopy
       >>> ftrob = ftrobopy.ftrobopy('192.168.7.2', 65000)
     """
+    def probe_socket(host, p=65000, timeout=0.5):
+      s = socket.socket()
+      s.settimeout(timeout)
+      ok = True
+      try:
+        s.connect((host, p))
+      except Exception as err:
+        ok = False
+      s.close()
+      return ok
+        
+    if host[:4] == 'auto':
+      # first check if running on TXT:
+      if str.find(socket.gethostname(), 'FT-txt') >= 0:
+        txt_control_main_is_running = False
+        # check if TxtMainControl is not running
+        pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
+        for pid in pids:
+          try:
+            line = open(os.path.join('/proc', pid, 'cmdline'), 'rb').read()
+            if line.decode('utf-8').find('TxtControlMain') >= 0:
+              txt_control_main_is_running = True
+              break
+          except IOError:
+            continue
+          except:
+            break
+        if txt_control_main_is_running:
+          if probe_socket('127.0.0.1'):
+            host = '127.0.0.1'
+          else:
+            print("Error: auto-detection failed, TxtControlMain-Prozess is running, but did not respond.")
+            return
+        else:
+          host = 'direct'
+      else: # not running on TXT-controller, check standard ports
+        if probe_socket('192.168.7.2'):   # USB (Ethernet)
+          host = '192.168.7.2'
+        elif probe_socket('192.168.8.2'): # WLAN
+          host = '192.168.8.2'
+        elif probe_socket('192.168.9.2'): # Blutooth
+          host = '192.168.9.2'
+        elif probe_socket(special_connection):  # non standard port, e.g. home network
+          host = special_connection
+        else:
+          print("Error: could not auto detect TXT connection. Please specify host and port manually !")
+          return
+
+    self._txt_is_initialized = False
     if host[:6] == 'direct':
       # check if running on FT-txt
       if str.find(socket.gethostname(), 'FT-txt') < 0:
@@ -1848,6 +1902,7 @@ class ftrobopy(ftTXT):
       ftTXT.__init__(self, directmode=True)
     else:
       ftTXT.__init__(self, host, port)
+    self._txt_is_initialzed = True
     self.queryStatus()
     if self.getVersionNumber() < 0x4010500:
       print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
@@ -1859,12 +1914,13 @@ class ftrobopy(ftTXT):
     self.updateConfig()
 
   def __del__(self):
-    self.stopCameraOnline()
-    self.stopOnline()
-    if self._sock:
-      self._sock.close()
-    if self._ser_ms:
-      self._ser_ms.close()
+    if self._txt_is_initialized:
+      self.stopCameraOnline()
+      self.stopOnline()
+      if self._sock:
+        self._sock.close()
+      if self._ser_ms:
+        self._ser_ms.close()
 
   def motor(self, output):
     """
