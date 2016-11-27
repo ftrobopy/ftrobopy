@@ -21,11 +21,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.56"
+__version__     = "1.57"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "11/18/2016"
+__date__        = "11/27/2016"
 
 def version():
   """
@@ -193,6 +193,7 @@ class ftTXT(object):
     self._current_temperature     = 0
     self._current_reference_power = 0
     self._current_extension_power = 0
+    self._debug                   = []
     self._exchange_data_lock.release() 
 
   def isOnline(self):
@@ -991,12 +992,10 @@ class ftTXT(object):
 
        >>> print("Der aktuelle Wert des Eingangs I4 ist: ", txt.getCurrentInput(3))
     """
-    self._exchange_data_lock.acquire()
     if idx != None:
       ret=self._current_input[idx]
     else:
       ret=self._current_input
-    self._exchange_data_lock.release()
     return ret
 
   def getCurrentCounterInput(self, idx=None):
@@ -1020,12 +1019,10 @@ class ftTXT(object):
       >>> else:
       >>>   print("Counter C1 hat sich seit der letzten Abfrage veraendert")
     """
-    self._exchange_data_lock.acquire()
     if idx != None:
       ret=self._current_counter[idx]
     else:
       ret=self._current_counter
-    self._exchange_data_lock.release()
     return ret
 
   def getCurrentCounterValue(self, idx=None):
@@ -1046,12 +1043,10 @@ class ftTXT(object):
 
       >>> print("Aktueller Wert von C1: ", txt.getCurrentCounterValue(0)
     """
-    self._exchange_data_lock.acquire()
     if idx != None:
       ret=self._current_counter_value[idx]
     else:
       ret=self._current_counter_value
-    self._exchange_data_lock.release()
     return ret
 
   def getCurrentCounterCmdId(self, idx=None):
@@ -1072,12 +1067,10 @@ class ftTXT(object):
       >>> cid = txt.getCurrentCounterCmdId(3)
       >>> print("Aktuelle Counter Command ID von C4: ", cid)
     """
-    self._exchange_data_lock.acquire()
     if idx != None:
       ret=self._current_counter_cmd_id[idx]
     else:
       ret=self._current_counter_cmd_id
-    self._exchange_data_lock.release()
     return ret
 
   def getCurrentMotorCmdId(self, idx=None):
@@ -1097,12 +1090,10 @@ class ftTXT(object):
 
       >>> print("Aktuelle Motor Command ID von M4: ", txt.getCurrentMotorCmdId(3))
     """
-    self._exchange_data_lock.acquire()
     if idx != None:
       ret=self._current_motor_cmd_id[idx]
     else:
       ret=self._current_motor_cmd_id
-    self._exchange_data_lock.release()
     return ret
 
   def getCurrentSoundCmdId(self):
@@ -1116,9 +1107,7 @@ class ftTXT(object):
 
       >>> print("Die aktuelle Sound Command ID ist: ", txt.getCurrentSoundCmdId())
     """
-    self._exchange_data_lock.acquire()
     ret=self._current_sound_cmd_id
-    self._exchange_data_lock.release()
     return ret
 
   def getCurrentIr(self):
@@ -1147,9 +1136,7 @@ class ftTXT(object):
     if self._directmode:
       print("Dieses Kommando steht im Direktmodus noch nicht zur Verfuegung.")
       return
-    self._exchange_data_lock.acquire()
     ret=self._current_ir
-    self._exchange_data_lock.release()
     return ret
 
   def getHost(self):
@@ -1534,10 +1521,10 @@ class ftTXTexchange(threading.Thread):
         #fmtstr += 'B'    # [30]    ir byte 0
         #fmtstr += 'B'    # [31]    ir byte 1
         #fmtstr += 'B'    # [32]    ir byte 2
-        #fmtstr += 'B'    # [33]    motor cmd id (?)
-        #fmtstr += 'B'    # [34]    motor cmd id and counter reset cmd id (?)
-        #fmtstr += 'B'    # [35]    counter reset cmd id (?)
-        #fmtstr += 'B'    # [36]    (?)
+        #fmtstr += 'B'    # [33]    (?)
+        #fmtstr += 'B'    # [34]    motor cmd id (?)
+        #fmtstr += 'B'    # [35]    motor cmd id and counter reset cmd id (?)
+        #fmtstr += 'B'    # [36]    counter reset cmd id (?)
         #fmtstr += 'B'    # [37]    reserve byte 1
         #fmtstr += 'BB'   # [38:39] 2 byte crc (not used)
 
@@ -1605,9 +1592,31 @@ class ftTXTexchange(threading.Thread):
         # still missing here:
         #
         # - ir data
-        # - motor cmd id
-        # - counter reset cmd id
 
+        # current values of motor cmd id and counter reset id
+
+        # "counter reset cmd id" (bits 0-2) of 4 counters and "motor cmd id" (bits 0-2) of 4 motors
+        # are packed into 3 bytes
+        # lowest byte  : c3 c3 c2 c2 c2 c1 c1 c1 (bit7 .. bit0)
+        # next byte    : m2 m1 m1 m1 c4 c4 c4 c3 (bit7 .. bit0)
+        # next byte    : m4 m4 m4 m3 m3 m3 m2 m2 (bit7 .. bit 0)
+
+        b0 = response[34]
+        b1 = response[35]
+        b2 = response[36]
+        self._txt._debug = [b0, b1, b2]
+        # get pointers to current counter and motor cmd id data structures
+        cC = self._txt.getCurrentCounterCmdId()
+        cM = self._txt.getCurrentMotorCmdId()
+        cC[0] = b0 & 0x07
+        cC[1] = (b0 >> 3) & 0x07
+        cC[2] = (b0 >> 6) & 0x03 | (b1 << 2) & 0x04
+        cC[3] = (b1 >> 1) & 0x07
+        cM[0] = (b1 >> 4) & 0x07
+        cM[1] = (b1 >> 7) & 0x01 | (b2 << 1) & 0x06
+        cM[2] = (b2 >> 2) & 0x07
+        cM[3] = (b2 >> 5) & 0x07
+        
         self._txt._update_status = 1
         self._txt._exchange_data_lock.release()
 
@@ -1843,7 +1852,7 @@ class ftrobopy(ftTXT):
         
     if host[:4] == 'auto':
       # first check if running on TXT:
-      if str.find(socket.gethostname(), 'FT-txt') >= 0:
+      if str.find(socket.gethostname(), 'FT-txt') >= 0 or str.find(socket.gethostname(), 'ft-txt') >= 0:
         txt_control_main_is_running = False
         # check if TxtMainControl is not running
         pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
@@ -1881,7 +1890,7 @@ class ftrobopy(ftTXT):
     self._txt_is_initialized = False
     if host[:6] == 'direct':
       # check if running on FT-txt
-      if str.find(socket.gethostname(), 'FT-txt') < 0:
+      if str.find(socket.gethostname(), 'FT-txt') < 0 and str.find(socket.gethostname(), 'ft-txt') < 0:
         print("ftrobopy konnte nicht initialisiert werden.")
         print("Der 'direct'-Modus kann nur im Download/Offline-Betrieb auf dem TXT verwendet werden !")
         return None
@@ -2065,11 +2074,10 @@ class ftrobopy(ftTXT):
           self._outer.incrMotorCmdId(self._output-1)
         self._outer._exchange_data_lock.release()
       def finished(self):
-        old = self._outer.getCurrentMotorCmdId(self._output-1)
-        if (old <= self._command_id) and not (old == 0 and self._command_id == 32767):
-          return False
-        else:
+        if self._outer.getMotorCmdId(self._output-1) == self._outer.getCurrentMotorCmdId(self._output-1):
           return True
+        else:
+          return False
       def getCurrentDistance(self):
         return self._outer.getCurrentCounterValue(idx=self._output-1)
       def stop(self):
