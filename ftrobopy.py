@@ -18,14 +18,14 @@ import time
 from math import sqrt
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015, 2016 by Torsten Stuehn"
+__copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.57"
+__version__     = "1.60"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "11/27/2016"
+__date__        = "01/04/2017"
 
 def version():
   """
@@ -87,6 +87,24 @@ class ftTXT(object):
   C_MOT_INPUT_ANALOG_VOLTAGE   = 2
   C_MOT_INPUT_ANALOG_5K        = 3
   C_MOT_INPUT_ULTRASONIC       = 4
+  
+  # sound commands and messages for spi communication to motor shield (only needed in direct mode)
+  C_SND_CMD_STATUS             = 0x80
+  C_SND_CMD_DATA               = 0x81
+  C_SND_CMD_RESET              = 0x90
+  C_SND_MSG_RX_CMD             = 0xBB  # return if in CMD mode
+  C_SND_MSG_RX_DATA            = 0x55  # return if in DATA mode
+  C_SND_MSG_RX_COMPLETE        = 0xAA  # return after all data has been transfered
+  C_SND_MSG_ERR_SIZE           = 0xFE  # spi buffer overflow
+  C_SND_MSG_ERR_FULL           = 0xFF  # spi communication not possible, all buffers are full
+  C_SND_FRAME_SIZE             = 441   # 22050 Hz, 20ms
+  # sound communication state machine
+  C_SND_STATE_IDLE             = 0x00
+  C_SND_STATE_START            = 0x01
+  C_SND_STATE_STOP             = 0x02
+  C_SND_STATE_RUNNING          = 0x03
+  C_SND_STATE_DATA             = 0x04
+
 
   def __init__(self, host='127.0.0.1', port=65000, serport='/dev/ttyO2' , on_error=default_error_handler, on_data=default_data_handler, directmode=False):
     """
@@ -121,17 +139,47 @@ class ftTXT(object):
       >>> import ftrobopy
       >>> txt = ftrobopy.ftTXT('192.168.7.2', 65000)
     """
-    self._m_devicename = b''
-    self._m_version    = 0
-    self._host=host
-    self._port=port
-    self._ser_port=serport
-    self.handle_error=on_error
-    self.handle_data=on_data
-    self._directmode=directmode
+    self._m_devicename      = b''
+    self._m_version         = 0
+    self._host              = host
+    self._port              = port
+    self._ser_port          = serport
+    self.handle_error       = on_error
+    self.handle_data        = on_data
+    self._directmode        = directmode
+    self._spi               = None
+    self._SoundFilesDir     = ''
+    self._SoundFilesList    = []
+    self._sound_state       = 0  # current state of sound-communication state-machine in 'direct'-mode
+    self._sound_data        = [] # curent buffer for sound data (wav-file[44:])
+    self._sound_data_idx    = 0
+    self._sound_current_rep = 0
     if self._directmode:
-      self._ser_ms            = serial.Serial(self._ser_port, 230000, timeout=1)
-      self._sock              = None
+      self._ser_ms     = serial.Serial(self._ser_port, 230000, timeout=1)
+      self._sock       = None
+      import spidev
+      try:
+        self._spi      = spidev.SpiDev(1,0) # /dev/spidev1.0
+      except error:
+        print("Error opening SPI device (this is needed for sound in 'direct'-mode).")
+        # print(error)
+        self._spi      = None
+      if self._spi:
+        self._spi.mode = 3
+        # reset sound on motor shield
+        res = self._spi.xfer([self.C_SND_CMD_RESET, 0, 0])
+        if res[0] != self.C_SND_MSG_RX_CMD:
+          print("Error: initial sound reset returns: ", ''.join(["0x%02X " % x for x in res]).split())
+          sys.exit(-1)
+        # check if we are running on original-firmware or on community-firmware
+        # this is only needed to find the original Sound Files
+        if os.path.isdir('/rom'):
+          self._SoundFilesDir = ('/rom/opt/knobloch/SoundFiles/')
+        else:
+          self._SoundFilesDir = ('/opt/knobloch/SoundFiles/')
+        self._SoundFilesList = os.listdir(self._SoundFilesDir)
+        self._SoundFilesList.sort()
+  
     else:
       self._sock=socket.socket()
       self._sock.settimeout(5)
@@ -348,6 +396,8 @@ class ftTXT(object):
     if self._directmode:
       self._txt_stop_event.set()
       self._txt_thread = None
+      if self._spi:
+        self._spi.close()
       return None
     if not self.isOnline():
       return
@@ -709,6 +759,7 @@ class ftTXT(object):
     """
     self._exchange_data_lock.acquire()
     self._sound += 1
+    self._sound &= 0x0F
     self._exchange_data_lock.release()
     return None
 
@@ -732,6 +783,18 @@ class ftTXT(object):
     self._exchange_data_lock.acquire()
     self._sound_index = idx
     self._exchange_data_lock.release()
+    if self._directmode and self._spi:
+      self._sound_data     = []
+      self._sound_data_idx = 0
+      if idx > 0:
+        snd_file_name = self._SoundFilesDir+self._SoundFilesList[idx-1]
+        with open(snd_file_name, 'rb') as f:
+          buf = f.read()
+          # first 44 bytes of ft soundfiles is header data
+          self._sound_data     = [ord(x) for x in buf[44:]]
+          filler = [0x80 for i in range(self.C_SND_FRAME_SIZE - (len(self._sound_data) % self.C_SND_FRAME_SIZE))]
+          self._sound_data += filler
+          self._sound_data_idx = 0
     return None
 
   def getSoundIndex(self):
@@ -1261,7 +1324,7 @@ class ftTXT(object):
       >>> while not motor1.finished():
       >>>   txt.updateWait()
       
-      Ein einfaches "pass" anstelle des "updateWait()" wuerde zu einer hohen CPU-Last fuehren.
+      Ein einfaches "pass" anstelle des "updateWait()" wuerde zu einer deutlich hoeheren CPU-Last fuehren.
       
     """
     self._exchange_data_lock.acquire()
@@ -1315,7 +1378,8 @@ class ftTXTKeepConnection(threading.Thread):
 
 class ftTXTexchange(threading.Thread):
   """
-  Thread zum kontinuierlichen Datenaustausch zwischen TXT und einem Computer
+  Thread zum kontinuierlichen Datenaustausch zwischen TXT und einem Computer, bzw. zwischen 
+  der TXT Linux Platine und der TXT Motorplatine (im Direktmodus).
   sleep_between_updates ist die Zeit, die zwischen zwei Datenaustauschprozessen gewartet wird.
   Der TXT kann im schnellsten Falle alle 10 ms Daten austauschen.
   Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
@@ -1513,7 +1577,7 @@ class ftTXTexchange(threading.Thread):
         #fmtstr += 'B'    # [23]    extension voltage VBUS analog bits 0-7
         #fmtstr += 'B'    # [24]    ref and ext analog bits 8-12 : eeee rrrr
         #fmtstr += 'B'    # [25]    bit pattern of fast counters (bit0=C1 .. bit3=C2, bit4-7 not used)
-                         #         specifies, if fast counter value changed since last data exchange
+                          #         specifies, if fast counter value changed since last data exchange
         #fmtstr += 'H'    # [26]    counter 1 value
         #fmtstr += 'H'    # [27]    counter 2 value
         #fmtstr += 'H'    # [28]    counter 3 value
@@ -1522,9 +1586,9 @@ class ftTXTexchange(threading.Thread):
         #fmtstr += 'B'    # [31]    ir byte 1
         #fmtstr += 'B'    # [32]    ir byte 2
         #fmtstr += 'B'    # [33]    (?)
-        #fmtstr += 'B'    # [34]    motor cmd id (?)
-        #fmtstr += 'B'    # [35]    motor cmd id and counter reset cmd id (?)
-        #fmtstr += 'B'    # [36]    counter reset cmd id (?)
+        #fmtstr += 'B'    # [34]    motor cmd id
+        #fmtstr += 'B'    # [35]    motor cmd id and counter reset cmd id
+        #fmtstr += 'B'    # [36]    counter reset cmd id
         #fmtstr += 'B'    # [37]    reserve byte 1
         #fmtstr += 'BB'   # [38:39] 2 byte crc (not used)
 
@@ -1591,12 +1655,11 @@ class ftTXTexchange(threading.Thread):
 
         # still missing here:
         #
-        # - ir data
+        # - ir data: response[30:33]
 
         # current values of motor cmd id and counter reset id
-
-        # "counter reset cmd id" (bits 0-2) of 4 counters and "motor cmd id" (bits 0-2) of 4 motors
-        # are packed into 3 bytes
+        #
+        # packed into 3 bytes
         # lowest byte  : c3 c3 c2 c2 c2 c1 c1 c1 (bit7 .. bit0)
         # next byte    : m2 m1 m1 m1 c4 c4 c4 c3 (bit7 .. bit0)
         # next byte    : m4 m4 m4 m3 m3 m3 m2 m2 (bit7 .. bit 0)
@@ -1620,6 +1683,36 @@ class ftTXTexchange(threading.Thread):
         self._txt._update_status = 1
         self._txt._exchange_data_lock.release()
 
+        #
+        # send sound data over spi-bus to motor shield
+        #
+        if self._txt._spi:
+          if self._txt._sound_state == self._txt.C_SND_STATE_IDLE:
+            if self._txt.getCurrentSoundCmdId() != self._txt.getSoundCmdId():
+              res = self._txt._spi.xfer([self._txt.C_SND_CMD_RESET, 0, 0])
+              self._txt._sound_state          = self._txt.C_SND_STATE_DATA
+              self._txt._sound_data_idx       = 0
+              self._txt._sound_current_rep    = 0
+
+          if self._txt._sound_state == self._txt.C_SND_STATE_DATA:
+            res = self._txt._spi.xfer([self._txt.C_SND_CMD_STATUS, self._txt.getSoundCmdId(), 0])
+            if res[0] == self._txt.C_SND_MSG_RX_CMD:
+              nFreeBuffers = res[1]
+              while nFreeBuffers > 1:
+                if self._txt._sound_data_idx < len(self._txt._sound_data):
+                  res=self._txt._spi.xfer([self._txt.C_SND_CMD_DATA, self._txt.getSoundCmdId(), 0]+self._txt._sound_data[self._txt._sound_data_idx:self._txt._sound_data_idx+self._txt.C_SND_FRAME_SIZE])
+                  nFreeBuffers = res[1]
+                  self._txt._sound_data_idx += self._txt.C_SND_FRAME_SIZE
+                else:
+                  self._txt._sound_current_rep += 1
+                  if self._txt._sound_current_rep < self._txt.getSoundRepeat():
+                    self._txt._sound_data_idx = 0
+                  else:
+                    res=self._txt._spi.xfer([self._txt.C_SND_CMD_STATUS, self._txt.getSoundCmdId(), 0])
+                    nFreeBuffers = res[1]
+                    self._txt._sound_state = self._txt.C_SND_STATE_IDLE
+                    self._txt._current_sound_cmd_id = self._txt.getSoundCmdId()
+                    break
       else:
        try:
         if (self._txt_sleep_between_updates > 0):
@@ -1776,9 +1869,7 @@ class camera(threading.Thread):
     if self._directmode:
       print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
       return
-    #data = []
     self._camera_data_lock.acquire()
-    #data[:] = self._m_framedata[:]
     data = self._m_framedata
     self._m_framedata = []
     self._camera_data_lock.release()
@@ -1816,12 +1907,11 @@ class ftrobopy(ftTXT):
       :param host: Hostname oder IP-Nummer des TXT Moduls
       :type host: string
       
-      - '127.0.0.1' im Downloadbetrieb
+      - 'auto', 'localhost' oder '127.0.0.1' automatisch den passenden Modus finden.
       - '192.168.7.2' im USB Offline-Betrieb
       - '192.168.8.2' im WLAN Offline-Betrieb
       - '192.168.9.2' im Bluetooth Offline-Betreib
       - 'direct' im Seriellen Online-Betrieb mit direkter Ansteuerung der Motor-Platine des TXT
-      - 'auto' automatisch den passenden Modus finden.
       
       :param port: Portnummer (normalerweise 65000)
       :type port: integer
@@ -1850,7 +1940,7 @@ class ftrobopy(ftTXT):
       s.close()
       return ok
         
-    if host[:4] == 'auto':
+    if host[:4] == 'auto' or host == '127.0.0.1' or host == 'localhost':
       # first check if running on TXT:
       if str.find(socket.gethostname(), 'FT-txt') >= 0 or str.find(socket.gethostname(), 'ft-txt') >= 0:
         txt_control_main_is_running = False
@@ -1874,6 +1964,7 @@ class ftrobopy(ftTXT):
             return
         else:
           host = 'direct'
+  
       else: # not running on TXT-controller, check standard ports
         if probe_socket('192.168.7.2'):   # USB (Ethernet)
           host = '192.168.7.2'
@@ -2148,6 +2239,9 @@ class ftrobopy(ftTXT):
       
       Mit dieser Methode wird der Status des digitalen Eingangs abgefragt.
       
+      :param num: Nummer des Eingangs, an dem der Taster angeschlossen ist (1 bis 8)
+      :type num: integer
+    
       :return: Zustand des Eingangs (0: Kontakt geschlossen, d.h. Eingang mit Masse verbunden, 1: Kontakt geoeffnet)
       :rtype: integer
       
@@ -2182,6 +2276,9 @@ class ftrobopy(ftTXT):
       **value** ()
     
       Mit dieser Methode wird der Wiederstand abgefragt.
+    
+      :param num: Nummer des Eingangs, an dem der Widerstand angeschlossen ist (1 bis 8)
+      :type num: integer
     
       :return: Der am Eingang anliegende Wiederstandswert
       :rtype: integer
@@ -2218,6 +2315,9 @@ class ftrobopy(ftTXT):
       
       Mit dieser Methode wird der aktuelle Distanz-Wert abgefragt
       
+      :param num: Nummer des Eingangs, an dem der Ultraschall-Distanzmesser angeschlossen ist (1 bis 8)
+      :type num: integer
+    
       :return: Die aktuelle Distanz zwischen Ultraschallsensor und vorgelagertem Objekt in cm.
       :rtype: integer
 
@@ -2252,6 +2352,9 @@ class ftrobopy(ftTXT):
       
       Mit dieser Methode wird die anliegende Spannung (in Volt) abgefragt.
       
+      :param num: Nummer des Eingangs, an dem die Spannungsquelle (z.B. Batterie) angeschlossen ist (1 bis 8)
+      :type num: integer
+    
       :return: Die am Eingang anliegene Spannung (in Volt)
       :rtype: integer
       
@@ -2288,6 +2391,9 @@ class ftrobopy(ftTXT):
       **value** ()
       
       Mit dieser Methode wird die anliegende Spannung (in mV) abgefragt.
+
+      :param num: Nummer des Eingangs, an dem der Sensor angeschlossen ist (1 bis 8)
+      :type num: integer
       
       :return: Der erkannte Farbwert als Integer Zahl
       :rtype: integer
@@ -2340,6 +2446,9 @@ class ftrobopy(ftTXT):
     
     Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
     
+    :param num: Nummer des Eingangs, an dem der Widerstand angeschlossen ist (1 bis 8)
+    :type num: integer
+    
     :return: Der am Eingang gemessene Widerstand in Ohm
     :rtype: float
     
@@ -2373,6 +2482,9 @@ class ftrobopy(ftTXT):
       **state** ()
     
       Mit dieser Methode wird der Spursensor abgefragt.
+      
+      :param num: Nummer des Eingangs, an dem der Sensor angeschlossen ist (1 bis 8)
+      :type num: integer
     
       :return: Der Wert des Spursensors, der am Eingang angeschlossen ist.
       :rtype: integer
@@ -2396,9 +2508,9 @@ class ftrobopy(ftTXT):
 
   def sound_finished(self):
     """
-      Ueberpruefen, ob die Zeit des zuletzt gespielten Sounds bereits abgelaufen ist
+      Ueberpruefen, ob der zuletzt gespielte Sounds bereits abgelaufen ist
       
-      :return: True (Zeit ist abgelaufen) oder False (Sound wird noch abgespielt)
+      :return: True (Sound ist fertig) oder False (Sound wird noch abgespielt)
       :rtype: boolean
 
       Anwendungsbeispiel:
@@ -2406,33 +2518,63 @@ class ftrobopy(ftTXT):
       >>> while not ftrob.sound_finished():
             pass
     """
-    if self._directmode:
-      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
-      return
-    if time.time()-self._sound_timer > self._sound_length:
+    if self._current_sound_cmd_id == self.getSoundCmdId():
       return True
     else:
       return False
 
-  def play_sound(self, idx, seconds=1):
+  def play_sound(self, idx, repeat=1):
     """
-      Einen Sound eine bestimmte zeitlang abspielen
+      Einen Sound ein- oder mehrmals abspielen.
+      
+      *  0 : Kein Sound (=Soundausgabe stoppen)
+      *  1 : Flugzeug
+      *  2 : Alarm
+      *  3 : GLocke
+      *  4 : Bremsen
+      *  5 : Autohupe (kurz)
+      *  6 : Autohipe (lang)
+      *  7 : Brechendes Holz
+      *  8 : Bagger
+      *  9 : Fantasie 1
+      * 10 : Fantasie 2
+      * 11 : Fantasie 3
+      * 12 : Fantasie 4
+      * 13 : Bauernhof
+      * 14 : Feuerwehrsirene
+      * 15 : Feuerstelle
+      * 16 : Formel 1 Auto
+      * 17 : Hubschrauber
+      * 18 : Hydraulik
+      * 19 : Laufender Motor
+      * 20 : Startender Motor
+      * 21 : Propeller-Flugzeug
+      * 22 : Achterbahn
+      * 23 : Schiffshorn
+      * 24 : Traktor
+      * 25 : LKW
+      * 26 : Augenzwinkern
+      * 27 : Fahrgeraeusch
+      * 28 : Kopf heben
+      * 29 : Kopf neigen
+      
+      :param idx: Nummer des Sounds
+      :type idx: integer
+      
+      :param repeat: Anzahl der Wiederholungen (default=1)
+      :type repeat: integer
+      
+      :return: Leer
       
       Anwendungsbeispiel:
       
-      >>> ftrob.play_sound(27, 5) # 5 Sekunden lang Fahrgeraeusche abspielen
+      >>> ftrob.play_sound(27, 5) # 5 mal hintereinander das Fahrgeraeusch abspielen
     """
-    if self._directmode:
-      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
-      return
-    self._sound_length=seconds
-    if time.time()-self._sound_timer < self._sound_length:
-      self._exchange_data_lock.acquire()
-      self.setSoundIndex(idx)
-      self.setSoundRepeat(1)
-      self.incrSoundCmdId()
-      self._exchange_data_lock.release()
-      self._sound_timer=time.time()
+    self._exchange_data_lock.acquire()
+    self.setSoundIndex(idx)
+    self.setSoundRepeat(repeat)
+    self.incrSoundCmdId()
+    self._exchange_data_lock.release()
 
   def stop_sound(self):
     """
@@ -2445,9 +2587,6 @@ class ftrobopy(ftTXT):
       
       >>> ftrob.stop_sound()
     """
-    if self._directmode:
-      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
-      return
     self._exchange_data_lock.acquire()
     self.setSoundIndex(0)
     self.setSoundRepeat(1)
