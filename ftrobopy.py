@@ -21,11 +21,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.60"
+__version__     = "1.61"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "01/04/2017"
+__date__        = "01/05/2017"
 
 def version():
   """
@@ -1907,7 +1907,8 @@ class ftrobopy(ftTXT):
       :param host: Hostname oder IP-Nummer des TXT Moduls
       :type host: string
       
-      - 'auto', 'localhost' oder '127.0.0.1' automatisch den passenden Modus finden.
+      - 'auto' automatisch den passenden Modus finden.
+      - '127.0.0.1' oder 'localhost' automatisch den direct- oder den socket-Modus verwenden, abhaengig davon, ob der Prozess TxtControl Main aktiv ist oder nicht.
       - '192.168.7.2' im USB Offline-Betrieb
       - '192.168.8.2' im WLAN Offline-Betrieb
       - '192.168.9.2' im Bluetooth Offline-Betreib
@@ -1964,19 +1965,19 @@ class ftrobopy(ftTXT):
             return
         else:
           host = 'direct'
-  
-      else: # not running on TXT-controller, check standard ports
-        if probe_socket('192.168.7.2'):   # USB (Ethernet)
-          host = '192.168.7.2'
-        elif probe_socket('192.168.8.2'): # WLAN
-          host = '192.168.8.2'
-        elif probe_socket('192.168.9.2'): # Blutooth
-          host = '192.168.9.2'
-        elif probe_socket(special_connection):  # non standard port, e.g. home network
-          host = special_connection
-        else:
-          print("Error: could not auto detect TXT connection. Please specify host and port manually !")
-          return
+      else: # not running on TXT-controller, check standard ports (only in auto mode)
+        if host[:4] == 'auto':
+          if probe_socket('192.168.7.2'):   # USB (Ethernet)
+            host = '192.168.7.2'
+          elif probe_socket('192.168.8.2'): # WLAN
+            host = '192.168.8.2'
+          elif probe_socket('192.168.9.2'): # Blutooth
+            host = '192.168.9.2'
+          elif probe_socket(special_connection):  # non standard port, e.g. home network
+            host = special_connection
+          else:
+            print("Error: could not auto detect TXT connection. Please specify host and port manually !")
+            return
 
     self._txt_is_initialized = False
     if host[:6] == 'direct':
