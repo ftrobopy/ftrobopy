@@ -166,6 +166,8 @@ class ftTXT(object):
         self._spi      = None
       if self._spi:
         self._spi.mode = 3
+        self._spi.bits_per_word = 8
+        self._spi.max_speed_hz = 1000000
         # reset sound on motor shield
         res = self._spi.xfer([self.C_SND_CMD_RESET, 0, 0])
         if res[0] != self.C_SND_MSG_RX_CMD:
