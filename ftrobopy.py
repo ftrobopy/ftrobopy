@@ -11,7 +11,6 @@ import os
 import platform
 import sys
 import socket
-import serial
 import threading
 import struct
 import time
@@ -21,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.62"
+__version__     = "1.63"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
@@ -155,6 +154,7 @@ class ftTXT(object):
     self._sound_data_idx    = 0
     self._sound_current_rep = 0
     if self._directmode:
+      import serial
       self._ser_ms     = serial.Serial(self._ser_port, 230000, timeout=1)
       self._sock       = None
       import spidev
