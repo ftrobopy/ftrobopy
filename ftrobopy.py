@@ -166,6 +166,8 @@ class ftTXT(object):
         self._spi      = None
       if self._spi:
         self._spi.mode = 3
+        self._spi.bits_per_word = 8
+        self._spi.max_speed_hz = 1000000
         # reset sound on motor shield
         res = self._spi.xfer([self.C_SND_CMD_RESET, 0, 0])
         if res[0] != self.C_SND_MSG_RX_CMD:
@@ -791,7 +793,7 @@ class ftTXT(object):
         with open(snd_file_name, 'rb') as f:
           buf = f.read()
           # first 44 bytes of ft soundfiles is header data
-          self._sound_data     = [ord(x) for x in buf[44:]]
+          self._sound_data     = list(buf[44:])
           filler = [0x80 for i in range(self.C_SND_FRAME_SIZE - (len(self._sound_data) % self.C_SND_FRAME_SIZE))]
           self._sound_data += filler
           self._sound_data_idx = 0
