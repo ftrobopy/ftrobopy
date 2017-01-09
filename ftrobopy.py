@@ -21,11 +21,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.61"
+__version__     = "1.62"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "01/05/2017"
+__date__        = "01/09/2017"
 
 def version():
   """
@@ -1868,9 +1868,6 @@ class camera(threading.Thread):
 
     >>> pic = txt.getCameraFrame()
     """
-    if self._directmode:
-      print("Dieses Kommando steht im Direktmodus nicht zur Verfuegung.")
-      return
     self._camera_data_lock.acquire()
     data = self._m_framedata
     self._m_framedata = []
