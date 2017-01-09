@@ -793,7 +793,7 @@ class ftTXT(object):
         with open(snd_file_name, 'rb') as f:
           buf = f.read()
           # first 44 bytes of ft soundfiles is header data
-          self._sound_data     = [ord(x) for x in buf[44:]]
+          self._sound_data     = list(buf[44:])
           filler = [0x80 for i in range(self.C_SND_FRAME_SIZE - (len(self._sound_data) % self.C_SND_FRAME_SIZE))]
           self._sound_data += filler
           self._sound_data_idx = 0
