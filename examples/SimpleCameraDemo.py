@@ -14,5 +14,5 @@ while pic == None:
     if len(pic) == 0:
       pic = None
 
-with open('TXTCamPic.jpg', 'w') as f:
-  f.write(''.join(pic))
+with open('TXTCamPic.jpg', 'wb') as f:
+  f.write(bytearray(pic))
