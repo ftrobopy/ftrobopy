@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.63"
+__version__     = "1.64"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "01/09/2017"
+__date__        = "01/29/2017"
 
 def version():
   """
@@ -627,7 +627,7 @@ class ftTXT(object):
     res        = self._sock.send(buf)
     data       = self._sock.recv(512)
     self._socket_lock.release()
-    fstr       = '<I4'
+    fstr       = '<I'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
       response_id, = struct.unpack(fstr, data)
