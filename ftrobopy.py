@@ -23,7 +23,7 @@ __license__     = "MIT License"
 __version__     = "1.64"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
-__status__      = "beta"
+__status__      = "release"
 __date__        = "01/29/2017"
 
 def version():
