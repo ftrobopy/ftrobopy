@@ -7,12 +7,7 @@ txt=ftrobopy.ftrobopy('auto')
 time.sleep(2)
 txt.startCameraOnline()
 time.sleep(2.5)
-pic = None
-while pic == None:
-  pic = txt.getCameraFrame()
-  if pic != None:
-    if len(pic) == 0:
-      pic = None
+pic = txt.getCameraFrame()
 
 with open('TXTCamPic.jpg', 'wb') as f:
   f.write(bytearray(pic))

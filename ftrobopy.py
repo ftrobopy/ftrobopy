@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.65"
+__version__     = "1.66"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
@@ -564,12 +564,9 @@ class ftTXT(object):
 
       >>> txt.startCameraOnline()
       >>> time.sleep(2.5)
-      >>> pic = None
-      >>> while pic == None:
-      >>>   pic = txt.getCameraFrame()
-      >>> f=open('txtimg.jpg','w')
-      >>> f.write(''.join(pic))
-      >>> f.close()
+      >>> pic = txt.getCameraFrame()
+      >>> with open('txtimg.jpg','wb') as f:
+      >>>   f.write(bytearray(pic))
     """
     if self._directmode:
       # ftrobopy.py does not support camera in direct mode, please use native camera support (e.g. ftrobopylib.so or opencv)
@@ -650,7 +647,19 @@ class ftTXT(object):
     if self._directmode:
       return
     if self.cameraIsOnline():
-      return self._camera_thread.getCameraFrame()
+      count = 0
+      frame = None
+      while frame == None:
+        frame = self._camera_thread.getCameraFrame()
+        count += 1
+        if frame != None:
+          if len(frame) == 0:
+            frame = None
+        if count > 20:
+          print('Timeout while getting new frame from camera')
+          return None
+        time.sleep(0.01)
+      return frame
     else:
       return None
 
