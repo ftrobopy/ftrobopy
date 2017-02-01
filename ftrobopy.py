@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.64"
+__version__     = "1.65"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "01/29/2017"
+__date__        = "02/01/2017"
 
 def version():
   """
@@ -57,8 +57,8 @@ class ftTXT(object):
 
         + ``C_VOLTAGE    = 0`` *Zur Verwendung eines Eingangs als Spannungsmesser*
         + ``C_SWITCH     = 1`` *Zur Verwendung eines Eingangs als Taster*
-        + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Wiederstand, z.B. Photowiederstand*
-        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Wiederstand*
+        + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Widerstand, z.B. Photowiderstand*
+        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Widerstand*
         + ``C_ULTRASONIC = 3`` *Zur Verwendung eines Eingangs als Distanzmesser*
         + ``C_ANALOG     = 0`` *Eingang wird analog verwendet*
         + ``C_DIGITAL    = 1`` *Eingang wird digital verwendet*
@@ -1429,7 +1429,7 @@ class ftTXTexchange(threading.Thread):
             elif (mode, digital) == (ftTXT.C_VOLTAGE,    ftTXT.C_DIGITAL ): # currently not used in ftrobopy
               direct_mode = ftTXT.C_MOT_INPUT_DIGITAL_VOLTAGE               # digital voltage is 1 if Input > 600 mV else 0
             elif (mode, digital) == (ftTXT.C_RESISTOR,   ftTXT.C_ANALOG ):  # ftrobopy.resistor
-              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_5K                     # analog resistance with 5k pull up [0 - 15K Ohm]
+              direct_mode = ftTXT.C_MOT_INPUT_ANALOG_5K                     # analog resistor with 5k pull up [0 - 15K Ohm]
                                                                             # unit of return value is [Ohm]
             elif (mode, digital) == (ftTXT.C_VOLTAGE,    ftTXT.C_ANALOG ):  # ftrobopy.voltage
               direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE                # analog voltage [5 mV - 10V]
@@ -2275,17 +2275,17 @@ class ftrobopy(ftTXT):
     
       **value** ()
     
-      Mit dieser Methode wird der Wiederstand abgefragt.
+      Mit dieser Methode wird der Widerstand abgefragt.
     
       :param num: Nummer des Eingangs, an dem der Widerstand angeschlossen ist (1 bis 8)
       :type num: integer
     
-      :return: Der am Eingang anliegende Wiederstandswert
+      :return: Der am Eingang anliegende Widerstandswert in Ohm fuer Widerstaende bis 15kOhm, fuer hoehere Widerstandswerte wird immer 15000 zurueckgegeben
       :rtype: integer
     
       Anwendungsbeispiel:
     
-      >>> print("Der Wiederstand betraegt ", R.value())
+      >>> print("Der Widerstand betraegt ", R.value())
     """
     class inp(object):
       def __init__(self, outer, num):
@@ -2350,17 +2350,17 @@ class ftrobopy(ftTXT):
       
       **voltage** ()
       
-      Mit dieser Methode wird die anliegende Spannung (in Volt) abgefragt.
+      Mit dieser Methode wird die anliegende Spannung (in mV) abgefragt. Es koennen Spannungen im Bereich von 5mV bis 10V gemessen werden. Ist die anliegende Spannung groesser als 600mV wird zusaetzlich der digitale Wert fuer diesen Eingang auf 1 gesetzt.
       
       :param num: Nummer des Eingangs, an dem die Spannungsquelle (z.B. Batterie) angeschlossen ist (1 bis 8)
       :type num: integer
     
-      :return: Die am Eingang anliegene Spannung (in Volt)
+      :return: Die am Eingang anliegene Spannung (in mV)
       :rtype: integer
       
       Anwendungsbeispiel:
       
-      >>> print("Die Spannung betraegt ", batterie.voltage(), " Volt.")
+      >>> print("Die Spannung betraegt ", batterie.voltage(), " mV")
       """
     class inp(object):
       def __init__(self, outer, num):
@@ -2434,33 +2434,37 @@ class ftrobopy(ftTXT):
 
   def resistor2(self, num):
     """
-    Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Ohmschen Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist.
+    Diese Funktion ist nur aus Gruenden der Kompatibilitaet mit der original fischertechnik ROBOPro-Software vorhanden.
+    In der Firmware der TXT-Motorplatine zur Abfrage der Eingaenge, wird diese Funktion exakt gleich zur voltage()-Funktion (s.o.) behandelt.
+    D.h. es wird eine analoge Spannung im Bereich von 5mV bis 10V gemessen.
+    Diese Funktion misst keinen Widerstand, sondern eine Spannung, entgegen ihres Namens.
+    Der Einsatzzweck dieser Funktion ist derzeit unklar.
     
     Anwendungsbeispiel:
     
     >>> R = ftrob.resistor2(7)
     
-    Das so erzeugte Widerstands-Objekt hat folgende Methoden:
+    Das so erzeugte Objekt hat folgende Methoden:
     
     **value** ()
     
-    Mit dieser Methode wird der Widerstand (in Ohm) abgefragt.
+    Mit dieser Methode wird die Spannung in mV abgefragt.
     
-    :param num: Nummer des Eingangs, an dem der Widerstand angeschlossen ist (1 bis 8)
+    :param num: Nummer des Eingangs, an dem die Spannungsquelle angeschlossen ist (1 bis 8)
     :type num: integer
     
-    :return: Der am Eingang gemessene Widerstand in Ohm
+    :return: Die am Eingang anliegende Spannung gemessen in mV.
     :rtype: float
     
     Anwendungsbeispiel:
     
-    >>> print("Der Widerstand betraegt ", R.value(), " Ohm.")
+    >>> print("Die Spannung betraegt ", R.value(), " mV")
     """
     class inp(object):
       def __init__(self, outer, num):
         self._outer=outer
         self._num=num
-      def resistance(self):
+      def value(self):
         return self._outer.getCurrentInput(num-1)
     
     M, I = self.getConfig()
@@ -2472,12 +2476,15 @@ class ftrobopy(ftTXT):
   def trailfollower(self, num):
     """
       Diese Funktion erzeugt ein digitales Input-Objekt zur Abfrage eines Spursensors, der an einem der Eingaenge I1-I8 angeschlossenen ist.
+      (Intern ist diese Funktion identisch zur voltage()-Funktion und misst die anliegende Spannung in mV).
+      Ab einer Spannung von 600mV wird eine digitale 1 (Spur ist weiss) zurueckgeliefert, ansonsten ist der Wert eine digitale 0 (Spur ist schwarz).
+      Falls fuer den Spursensor ein analoger Eingangswert benoetigt wird, kann auch die voltage()-Funktion verwendet werden.
     
       Anwendungsbeispiel:
     
-      >>> R = ftrob.trailfollower(7)
+      >>> L = ftrob.trailfollower(7)
     
-      Das so erzeugte Widerstands-Objekt hat folgende Methoden:
+      Das so erzeugte Sensor-Objekt hat folgende Methoden:
     
       **state** ()
     
@@ -2486,19 +2493,25 @@ class ftrobopy(ftTXT):
       :param num: Nummer des Eingangs, an dem der Sensor angeschlossen ist (1 bis 8)
       :type num: integer
     
-      :return: Der Wert des Spursensors, der am Eingang angeschlossen ist.
+      :return: Der Wert des Spursensors (0 oder 1), der am Eingang angeschlossen ist.
       :rtype: integer
     
       Anwendungsbeispiel:
     
-      >>> print("Der Wert des Spursensors ist ", R.state())
+      >>> print("Der Wert des Spursensors ist ", L.state())
     """
     class inp(object):
       def __init__(self, outer, num):
         self._outer=outer
         self._num=num
       def state(self):
-        return self._outer.getCurrentInput(num-1)
+        if self._outer.getCurrentInput(num-1) == 1: # in direct-mode digital 1 is set by motor-shield if voltage is > 600mV
+         return 1
+        else:
+          if self._outer.getCurrentInput(num-1) > 600: # threshold in mV between digital 0 and 1. Use voltage()-Function instead, if analog value of trailfollower is needed.
+            return 1
+          else:
+            return 0
     
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_RESISTOR2, ftTXT.C_DIGITAL)
