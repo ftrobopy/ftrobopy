@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.66"
+__version__     = "1.67"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "02/01/2017"
+__date__        = "02/03/2017"
 
 def version():
   """
@@ -58,7 +58,6 @@ class ftTXT(object):
         + ``C_VOLTAGE    = 0`` *Zur Verwendung eines Eingangs als Spannungsmesser*
         + ``C_SWITCH     = 1`` *Zur Verwendung eines Eingangs als Taster*
         + ``C_RESISTOR   = 1`` *Zur Verwendung eines Eingangs als Widerstand, z.B. Photowiderstand*
-        + ``C_RESISTOR2  = 2`` *Zur Verwendung eines Eingangs als Widerstand*
         + ``C_ULTRASONIC = 3`` *Zur Verwendung eines Eingangs als Distanzmesser*
         + ``C_ANALOG     = 0`` *Eingang wird analog verwendet*
         + ``C_DIGITAL    = 1`` *Eingang wird digital verwendet*
@@ -69,7 +68,6 @@ class ftTXT(object):
   C_VOLTAGE                    = 0
   C_SWITCH                     = 1
   C_RESISTOR                   = 1
-  C_RESISTOR2                  = 2
   C_ULTRASONIC                 = 3
   C_ANALOG                     = 0
   C_DIGITAL                    = 1
@@ -1446,9 +1444,7 @@ class ftTXTexchange(threading.Thread):
             elif mode == ftTXT.C_ULTRASONIC:                                # ftrobopy.ultrasonic
               direct_mode = ftTXT.C_MOT_INPUT_ULTRASONIC                    # ultrasonic for both C_ANALOG and C_DIGITAL
             else:
-              # the following two are not defined on motor shield and fall back to default case (?)
-              # (mode, digital) == (C_RESISTOR2,  C_ANALOG ): # ftrobopy.resistor2
-              # (mode, digital) == (C_RESISTOR2,  C_DIGITAL): # ftrobopy.trailfollower
+              # fall back to default case
               direct_mode = ftTXT.C_MOT_INPUT_ANALOG_VOLTAGE
         
             inp[int(k/2)] |= (direct_mode & 0x0F) << (4 * (k%2))
@@ -2441,47 +2437,6 @@ class ftrobopy(ftTXT):
     self.updateConfig()
     return inp(self, num)
 
-  def resistor2(self, num):
-    """
-    Diese Funktion ist nur aus Gruenden der Kompatibilitaet mit der original fischertechnik ROBOPro-Software vorhanden.
-    In der Firmware der TXT-Motorplatine zur Abfrage der Eingaenge, wird diese Funktion exakt gleich zur voltage()-Funktion (s.o.) behandelt.
-    D.h. es wird eine analoge Spannung im Bereich von 5mV bis 10V gemessen.
-    Diese Funktion misst keinen Widerstand, sondern eine Spannung, entgegen ihres Namens.
-    Der Einsatzzweck dieser Funktion ist derzeit unklar.
-    
-    Anwendungsbeispiel:
-    
-    >>> R = ftrob.resistor2(7)
-    
-    Das so erzeugte Objekt hat folgende Methoden:
-    
-    **value** ()
-    
-    Mit dieser Methode wird die Spannung in mV abgefragt.
-    
-    :param num: Nummer des Eingangs, an dem die Spannungsquelle angeschlossen ist (1 bis 8)
-    :type num: integer
-    
-    :return: Die am Eingang anliegende Spannung gemessen in mV.
-    :rtype: float
-    
-    Anwendungsbeispiel:
-    
-    >>> print("Die Spannung betraegt ", R.value(), " mV")
-    """
-    class inp(object):
-      def __init__(self, outer, num):
-        self._outer=outer
-        self._num=num
-      def value(self):
-        return self._outer.getCurrentInput(num-1)
-    
-    M, I = self.getConfig()
-    I[num-1]= (ftTXT.C_RESISTOR2, ftTXT.C_ANALOG)
-    self.setConfig(M, I)
-    self.updateConfig()
-    return inp(self, num)
-
   def trailfollower(self, num):
     """
       Diese Funktion erzeugt ein digitales Input-Objekt zur Abfrage eines Spursensors, der an einem der Eingaenge I1-I8 angeschlossenen ist.
@@ -2523,7 +2478,7 @@ class ftrobopy(ftTXT):
             return 0
     
     M, I = self.getConfig()
-    I[num-1]= (ftTXT.C_RESISTOR2, ftTXT.C_DIGITAL)
+    I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
