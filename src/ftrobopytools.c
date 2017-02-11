@@ -11,7 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include "SDL.h"
+#include <SDL/SDL.h>
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Begin of NanoJPEG
