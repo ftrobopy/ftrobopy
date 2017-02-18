@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.67"
+__version__     = "1.68"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "02/03/2017"
+__date__        = "02/18/2017"
 
 def version():
   """
@@ -237,8 +237,14 @@ class ftTXT(object):
     self._current_motor_cmd_id    = [0,0,0,0]
     self._current_sound_cmd_id    = 0
     self._current_ir              = range(26)
-    self._current_power           = 0
-    self._current_temperature     = 0
+    self._ir_current_ljoy_left_right = [0,0,0,0,0] # -15 ... 15
+    self._ir_current_ljoy_up_down    = [0,0,0,0,0] # -15 ... 15
+    self._ir_current_rjoy_left_right = [0,0,0,0,0] # -15 ... 15
+    self._ir_current_rjoy_up_down    = [0,0,0,0,0] # -15 ... 15
+    self._ir_current_buttons         = [0,0,0,0,0] # 0:OFF 1:ON
+    self._ir_current_dip_switch      = [0,0,0,0,0] # 0:all 1:0-0 2:1-0 3:0-1 4:1-1
+    self._current_power           = 0 # voltage of battery or power supply
+    self._current_temperature     = 0 # temperature of ARM CPU
     self._current_reference_power = 0
     self._current_extension_power = 0
     self._debug                   = []
@@ -1190,7 +1196,7 @@ class ftTXT(object):
       Die Werte werden fuer jede einzelne Einstellung der DIP-Switche auf der IR-Fernsteuerung zurueckgeliefert,
       so dass insgesamt 4 Fernsteuerungen abgefragt werden koennen (als Python-Liste von Python-Listen).
       Die 5. Liste innerhalb der Python-Liste gibt den Zustand einer Fernsteuerung mit beliebiger DIP-Switch-Einstellung zurueck.
-      Die Einstellung der Switche selbst wird auch zurueckgelifert, aber nicht, wenn wenn die Switche sich aendern, sondern nur, wenn einer der anderen Werte sich aendert.
+      Die Einstellung der Switche selbst wird auch zurueckgeliefert, aber nicht, wenn wenn die Switche sich aendern, sondern nur, wenn einer der anderen Werte sich aendert.
 
       :param idx: Nummer des IR Eingangs
       :type idx: integer
@@ -1209,6 +1215,48 @@ class ftTXT(object):
       print("Dieses Kommando steht im Direktmodus noch nicht zur Verfuegung.")
       return
     ret=self._current_ir
+    return ret
+
+  def getIrCurrentLJoyLeftRight(self, idx=None):
+    if idx != None:
+      ret=self._ir_current_ljoy_left_right[idx]
+    else:
+      ret=self._ir_current_ljoy_left_right
+    return ret
+  
+  def getIrCurrentLJoyUpDown(self, idx=None):
+    if idx != None:
+      ret=self._ir_current_ljoy_up_down[idx]
+    else:
+      ret=self._ir_current_ljoy_up_down
+    return ret
+
+  def getIrCurrentRJoyLeftRight(self, idx=None):
+    if idx != None:
+      ret=self._ir_current_rjoy_left_right[idx]
+    else:
+      ret=self._ir_current_rjoy_left_right
+    return ret
+
+  def getIrCurrentRJoyUpDown(self, idx=None):
+    if idx != None:
+      ret=self._ir_current_rjoy_up_down[idx]
+    else:
+      ret=self._ir_current_rjoy_up_down
+    return ret
+
+  def getIrCurrentButtons(self, idx=None):
+    if idx != None:
+      ret=self._ir_current_buttons[idx]
+    else:
+      ret=self._ir_current_buttons
+    return ret
+
+  def getIrCurrentDipSwitch(self, idx=None):
+    if idx != None:
+      ret=self._ir_current_dip_switch[idx]
+    else:
+      ret=self._ir_current_dip_switch
     return ret
 
   def getHost(self):
@@ -1775,6 +1823,22 @@ class ftTXTexchange(threading.Thread):
        self._txt._exchange_data_lock.acquire()
        self._txt._update_status = 1
        self._txt._exchange_data_lock.release()
+       # extract values of IR-Remotes
+       irNr = ((self._txt._current_ir[4] >> 2) & 3) + 1
+       # IR-Remote any
+       self._txt._ir_current_ljoy_left_right[0] = self._txt._current_ir[0]
+       self._txt._ir_current_ljoy_up_down[0]    = self._txt._current_ir[1]
+       self._txt._ir_current_rjoy_left_right[0] = self._txt._current_ir[2]
+       self._txt._ir_current_rjoy_up_down[0]    = self._txt._current_ir[3]
+       self._txt._ir_current_buttons[0]         = self._txt._current_ir[4] & 3
+       self._txt._ir_current_dip_switch[0]      = (self._txt._current_ir[4] >> 2) & 3
+       # IR-Remote 1 to 4
+       self._txt._ir_current_ljoy_left_right[irNr] = self._txt._current_ir[irNr*5 + 0]
+       self._txt._ir_current_ljoy_up_down[irNr]    = self._txt._current_ir[irNr*5 + 1]
+       self._txt._ir_current_rjoy_left_right[irNr] = self._txt._current_ir[irNr*5 + 2]
+       self._txt._ir_current_rjoy_up_down[irNr]    = self._txt._current_ir[irNr*5 + 3]
+       self._txt._ir_current_buttons[irNr]         = self._txt._current_ir[irNr*5 + 4] & 3
+       self._txt._ir_current_dip_switch[irNr]      = (self._txt._current_ir[irNr*5 + 4] >> 2) & 3
     return
 
 class camera(threading.Thread):
@@ -2482,6 +2546,58 @@ class ftrobopy(ftTXT):
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
+  
+  def joystick(self, joynum, remote_number=0, remote_type=0):
+    class remote(object):
+      def __init__(self, outer, joynum, remote_number, remote_type):
+        # remote_number: 0=any, 1-4=remote1-4
+        # remote_type: IR=0, BT=1
+        self._outer=outer
+        self._joynum=joynum
+        self._remote_number=remote_number
+        self._remote_type=remote_type
+      def leftright(self):
+        if remote_type==0: # IR remote
+          if joynum==0: # left joystick on remote
+            return self._outer._ir_current_ljoy_left_right[remote_number]
+          else: # right joystick on remote
+            return self._outer._ir_current_rjoy_left_right[remote_number]
+        else: # BT remote (not yet supported)
+          return 0
+      def updown(self):
+        if remote_type==0: # IR remote
+          if joynum==0: # left joystick on remote
+            return self._outer._ir_current_ljoy_up_down[remote_number]
+          else: # right joystick on remote
+            return self._outer._ir_current_rjoy_up_down[remote_number]
+        else: # BT remote (not yet supported)
+          return 0
+    return remote(self, joynum, remote_number, remote_type)
+
+  def joybutton(self, buttonnum, remote_number=0, remote_type=0):
+    class remote(object):
+      def __init__(self, outer, buttonnum, remote_number, remote_type):
+        # remote_number: 0=any, 1-4=remote1-4
+        # remote_type: IR=0, BT=1
+        self._outer=outer
+        self._buttonnum=buttonnum
+        self._remote_number=remote_number
+        self._remote_type=remote_type
+      def pressed(self):
+        if remote_type==0: # IR remote
+          if buttonnum==0: # left button (ON) on remote
+            if self._outer._ir_current_buttons[remote_number] == 1:
+              return True
+            else:
+              return False
+          else: # right button (OFF) on remote
+            if (self._outer._ir_current_buttons[remote_number]) >> 1 == 1:
+              return True
+            else:
+              return False
+        else: # BT remote (not yet supported)
+          return 0
+    return remote(self, buttonnum, remote_number, remote_type)
 
   def sound_finished(self):
     """
