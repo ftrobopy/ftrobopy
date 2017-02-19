@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.68"
+__version__     = "1.69"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "02/18/2017"
+__date__        = "02/19/2017"
 
 def version():
   """
@@ -1189,74 +1189,13 @@ class ftTXT(object):
     return ret
 
   def getCurrentIr(self):
-    # in directmode ir is not supported yet in this version of ftrobopy
     """
-      Liefert die aktuellen Werte der Infrarot Fernsteuerung zurueck (als Array oder als einzelnen Wert)
-
-      Die Werte werden fuer jede einzelne Einstellung der DIP-Switche auf der IR-Fernsteuerung zurueckgeliefert,
-      so dass insgesamt 4 Fernsteuerungen abgefragt werden koennen (als Python-Liste von Python-Listen).
-      Die 5. Liste innerhalb der Python-Liste gibt den Zustand einer Fernsteuerung mit beliebiger DIP-Switch-Einstellung zurueck.
-      Die Einstellung der Switche selbst wird auch zurueckgeliefert, aber nicht, wenn wenn die Switche sich aendern, sondern nur, wenn einer der anderen Werte sich aendert.
-
-      :param idx: Nummer des IR Eingangs
-      :type idx: integer
-
-      :return: Aktueller Wert eines IR Eingangs (idx=0-5) oder aller IR Eingaenge des TXT-Controllers als Array[5] (idx=None oder kein idx angegeben)
-
-      Hinweis:
-
-      - der idx-Parameter wird angeben von 0 bis 5 fuer die einzelnen Listen innerhalb der Liste.
-
-      Anwendungsbeispiel:
-
-      >>> print("Aktuelle Werte der IR Fernsteuerung: ", txt.getCurrentIr())
+    Liefert eine Liste mit den aktuellen Werten der IR-Fernbedienung zurueck (keine direct-Mode Unterstuetzung).
+    Diese Funktion ist obsolet und sollte nicht mehr verwendet werden.
     """
     if self._directmode:
-      print("Dieses Kommando steht im Direktmodus noch nicht zur Verfuegung.")
       return
     ret=self._current_ir
-    return ret
-
-  def getIrCurrentLJoyLeftRight(self, idx=None):
-    if idx != None:
-      ret=self._ir_current_ljoy_left_right[idx]
-    else:
-      ret=self._ir_current_ljoy_left_right
-    return ret
-  
-  def getIrCurrentLJoyUpDown(self, idx=None):
-    if idx != None:
-      ret=self._ir_current_ljoy_up_down[idx]
-    else:
-      ret=self._ir_current_ljoy_up_down
-    return ret
-
-  def getIrCurrentRJoyLeftRight(self, idx=None):
-    if idx != None:
-      ret=self._ir_current_rjoy_left_right[idx]
-    else:
-      ret=self._ir_current_rjoy_left_right
-    return ret
-
-  def getIrCurrentRJoyUpDown(self, idx=None):
-    if idx != None:
-      ret=self._ir_current_rjoy_up_down[idx]
-    else:
-      ret=self._ir_current_rjoy_up_down
-    return ret
-
-  def getIrCurrentButtons(self, idx=None):
-    if idx != None:
-      ret=self._ir_current_buttons[idx]
-    else:
-      ret=self._ir_current_buttons
-    return ret
-
-  def getIrCurrentDipSwitch(self, idx=None):
-    if idx != None:
-      ret=self._ir_current_dip_switch[idx]
-    else:
-      ret=self._ir_current_dip_switch
     return ret
 
   def getHost(self):
@@ -1708,10 +1647,37 @@ class ftTXTexchange(threading.Thread):
         #
         self._txt._current_counter_value = response[26:30]
 
-        # still missing here:
-        #
         # - ir data: response[30:33]
-
+        #
+        # ir remote 0 (any)
+        
+        self._txt._ir_current_buttons[0]              =  ( response[30] >> 4) & 0x03
+        self._txt._ir_current_dip_switch[0]           =  ( response[30] >> 6) & 0x03
+        if response[30] & 0x01:
+          self._txt._ir_current_rjoy_left_right[0]    =    response[31]       & 0x0F
+        else:
+          self._txt._ir_current_rjoy_left_right[0]    =  -(response[31]       & 0x0F)
+        if response[30] & 0x02:
+          self._txt._ir_current_rjoy_up_down[0]       =   (response[31] >> 4) & 0x0F
+        else:
+          self._txt._ir_current_rjoy_up_down[0]       = -((response[31] >> 4) & 0x0F)
+        if response[30] & 0x04:
+          self._txt._ir_current_ljoy_left_right[0]    =    response[32]       & 0x0F
+        else:
+          self._txt._ir_current_ljoy_left_right[0]    =  -(response[32]       & 0x0F)
+        if response[30] & 0x08:
+          self._txt._ir_current_ljoy_up_down[0]       =   (response[32] >> 4) & 0x0F
+        else:
+          self._txt._ir_current_ljoy_up_down[0]       = -((response[32] >> 4) & 0x0F)
+        # ir remote 1-4 ( = copy of ir remote 0)
+        irNr =  ((response[30] >> 6) & 0x03) + 1
+        self._txt._ir_current_buttons[irNr]           = self._txt._ir_current_buttons[0]
+        self._txt._ir_current_dip_switch[irNr]        = self._txt._ir_current_dip_switch[0]
+        self._txt._ir_current_rjoy_left_right[irNr]   = self._txt._ir_current_rjoy_left_right[0]
+        self._txt._ir_current_rjoy_up_down[irNr]      = self._txt._ir_current_rjoy_up_down[0]
+        self._txt._ir_current_ljoy_left_right[irNr]   = self._txt._ir_current_ljoy_left_right[0]
+        self._txt._ir_current_ljoy_up_down[irNr]      = self._txt._ir_current_ljoy_up_down[0]
+        
         # current values of motor cmd id and counter reset id
         #
         # packed into 3 bytes
@@ -2548,6 +2514,50 @@ class ftrobopy(ftTXT):
     return inp(self, num)
   
   def joystick(self, joynum, remote_number=0, remote_type=0):
+    """
+      Diese Funktion erzeugt ein Input-Objekt zur Abfrage eines Joysticks einer fischertechnik IR-Fernbedienung.
+
+      :param joynum: Nummer des Joysticks, der abgefragt werden soll.
+       
+      + 0: linker Joystick
+      + 1: rechter Joystick
+      
+      :param remote_number: (optionaler Parameter) Nummer der IR-Fernbedienung.
+      
+      Es koennen bis zu 4 fischertechnik IR-Fernbedienungen gleichzeitig abgefragt werden, die ueber ihre DIP-Schalter-Einstellungen voneinander unterschieden werden:
+      
+      + OFF OFF : Nummer 1
+      + ON  OFF : Nummer 2
+      + OFF ON  : Nummer 3
+      + ON  ON  : Nummer 4
+      
+      Wird der parameter remote_number=0 gesetzt, kann damit jede der 4 moeglichen Fernbedienungen abgefragt werden, unabhaengig von ihren DIP-Schalter Einstellungen. Dies ist die Standardeinstellung, falls der Parameter nicht angegeben wird.
+      
+      Anwendungsbeispiel:
+    
+      >>> joystickLinks   = ftrob.joystick(0)
+      >>> joystickRechts  = ftrob.joystick(1)
+      >>> joystickNummer3 = ftrob.joystick(0, 2) # linker Joystick, der Fernbedienung Nummer 2 (Dip-Switch: ON OFF)
+    
+      Das so erzeugte Joystick-Objekt hat folgende Methoden:
+    
+      **leftright** ()
+    
+      Mit dieser Methode wird die horizontale (links-rechts) Achse abgefragt.
+
+      :return: -15 (Joystick ganz nach links) bis +15 (Joystick ganz nach recht), 0: Mittelstellung
+
+      **updown** ()
+      
+      Mit dieser Methode wird die vertikale (hoch-runter) Achse abgefragt.
+      
+      :return: -15 (Joystick ganz nach unten) bis +15 (Joystick ganz nach oben), 0: Mittelstellung
+      
+      Anwendungsbeispiel:
+      
+      >>> joystick1 = ftrob.joystick(0) # linker Joystick einer bel. IR-Fernsteuerung
+      >>> print("Links-Rechts-Stellung=", joystick1.leftright(), " Hoch-Runter-Stellung=", joystick1.updown())
+    """
     class remote(object):
       def __init__(self, outer, joynum, remote_number, remote_type):
         # remote_number: 0=any, 1-4=remote1-4
@@ -2575,6 +2585,47 @@ class ftrobopy(ftTXT):
     return remote(self, joynum, remote_number, remote_type)
 
   def joybutton(self, buttonnum, remote_number=0, remote_type=0):
+    """
+      Diese Funktion erzeugt ein Input-Objekt zur Abfrage eines Buttons einer fischertechnik IR-Fernbedienung.
+
+      :param buttonnum: Nummer des Buttons, der abgefragt werden soll.
+       
+      + 0: linker Button (ON)
+      + 1: rechter Button (OFF)
+      
+      :param remote_number: (optionaler Parameter) Nummer der IR-Fernbedienung.
+      
+      Es koennen bis zu 4 fischertechnik IR-Fernbedienungen gleichzeitig abgefragt werden, die ueber ihre DIP-Schalter-Einstellungen voneinander unterschieden werden:
+      
+      + OFF OFF  : Nummer 1
+      + ON  OFF  : Nummer 2
+      + OFF ON   : Nummer 3
+      + ON  ON   : Nummer 4
+      
+      Wird der parameter remote_number=0 gesetzt, kann damit jede der 4 moeglichen Fernbedienungen abgefragt werden, unabhaengig von ihren DIP-Schalter Einstellungen. Dies ist die Standardeinstellung, falls der Parameter nicht angegeben wird.
+      
+      Anwendungsbeispiel:
+    
+      >>> buttonON    = ftrob.joybutton(0)
+      >>> buttonOFF   = ftrob.joybutton(1)
+      >>> buttonOFF_2 = ftrob.joybutton(0, 4) # linker (ON)-Button, der Fernbedienung Nummer 4 (Dip-Switch: ON ON)
+    
+      Das so erzeugte Button-Objekt hat die folgende Methode:
+    
+      **pressed** ()
+    
+      Mit dieser Methode wird abgefragt, ob der Button gedrueckt ist.
+
+      :return: False (=Button ist nicht gedrueckt) oder True (=Button ist gedrueckt)
+      :rtype: boolean
+
+      Anwendungsbeispiel:
+      
+      >>> button1 = ftrob.joybutton(0) # linker (ON) Button einer bel. IR-Fernsteuerung
+      >>> while not button1.pressed():
+      >>>   time.sleep(0.1)
+      >>> print("Button ON wurde gedrueckt")
+    """
     class remote(object):
       def __init__(self, outer, buttonnum, remote_number, remote_type):
         # remote_number: 0=any, 1-4=remote1-4
@@ -2598,6 +2649,45 @@ class ftrobopy(ftTXT):
         else: # BT remote (not yet supported)
           return 0
     return remote(self, buttonnum, remote_number, remote_type)
+
+  def joydipswitch(self, remote_type=0):
+    """
+      Diese Funktion erzeugt ein Input-Objekt zur Abfrage des DIP-Schalters einer fischertechnik IR-Fernbedienung.
+
+      Anwendungsbeispiel:
+    
+      >>> IR_DipSchalter = ftrob.joydipswitch()
+    
+      Das so erzeugte Button-Objekt hat die folgende Methode:
+    
+      **setting** ()
+    
+      Mit dieser Methode wird die DIP-Schalter-Einstellung abgefragt:
+      
+      + OFF OFF  = 0
+      + ON  OFF  = 1
+      + OFF ON   = 2
+      + ON  ON   = 3
+
+      :return: Wert des DIP-Schalters (0-3)
+      :rtype: integer
+      
+      Anwendungsbeispiel:
+ 
+      >>> IR_DipSchalter = ftrob.joydipswitch()
+      >>> print("Die aktuelle Einstellung des DIP-Schalters ist: ", IR_DipSchalter.setting())
+    """
+    class remote(object):
+      def __init__(self, outer, remote_type):
+        # remote_type: IR=0, BT=1
+        self._outer=outer
+        self._remote_type=remote_type
+      def setting(self):
+        if remote_type==0: # IR remote
+          return self._outer._ir_current_dip_switch[0]
+        else: # BT remote (not yet supported)
+          return 0
+    return remote(self, remote_type)
 
   def sound_finished(self):
     """
