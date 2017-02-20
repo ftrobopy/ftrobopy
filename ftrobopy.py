@@ -1918,15 +1918,20 @@ class ftrobopy(ftTXT):
     * **motor**, zur Ansteuerung der Motorausgaenge M1-M4
     * **output**, zur Ansteuerung der universellen Ausgaenge O1-O8
     * **input**, zum Einlesen von Werten der Eingaenge I1-I8
+    * **resistor**, zum Messen eines Ohm'schen Widerstaenden
     * **ultrasonic**, zur Bestimmung von Distanzen mit Hilfe des Ultraschall Moduls
-    
+    * **voltage**, zum Messen einer Spannung
+    * **colorsensor**, zur Abfrage des fischertechnik Farbsensors
+    * **trailfollower**, zur Abfrage des fischertechnik Spursensors
+    * **joystick**, zur Abfrage eines Joysticks einer fischertechnik IR-Fernbedienung
+    * **joybutton**, zur Abfrage eines Buttons einer fischertechnik IR-Fernbedienung
+    * **joydipswitch**, zur Abfrage der DIP-Schalter-Einstellung einer IR-Fernbedienung
+
     Ausserdem werden die folgenden Sound-Routinen zur Verfuegung gestellt:
     
     * **play_sound**
     * **stop_sound**
     * **sound_finished**
-
-    (die Sound-Routinen stehen nur in den Socket-Betriebsarten zur Verfuegung, nicht im Direktmodus)
     
   """
   def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01, special_connection='127.0.0.1'):
