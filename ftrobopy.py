@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.70"
+__version__     = "1.71"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
@@ -799,17 +799,21 @@ class ftTXT(object):
     self._sound_index = idx
     self._exchange_data_lock.release()
     if self._directmode and self._spi:
+      self._exchange_data_lock.acquire()
       self._sound_data     = []
       self._sound_data_idx = 0
+      self._exchange_data_lock.release()
       if idx > 0:
         snd_file_name = self._SoundFilesDir+self._SoundFilesList[idx-1]
         with open(snd_file_name, 'rb') as f:
           buf = f.read()
           # first 44 bytes of ft soundfiles is header data
+          self._exchange_data_lock.acquire()
           self._sound_data     = list(bytearray(buf[44:]))
           filler = [0x80 for i in range(self.C_SND_FRAME_SIZE - (len(self._sound_data) % self.C_SND_FRAME_SIZE))]
           self._sound_data += filler
           self._sound_data_idx = 0
+          self._exchange_data_lock.release()
     return None
 
   def getSoundIndex(self):
@@ -1235,7 +1239,7 @@ class ftTXT(object):
 
   def getTemperature(self):
     """
-    Liefert die aktuelle Temperatur des TXT (in einer unbekannten Einheit) zurueck.
+    Liefert die aktuelle Temperatur der CPU des TXT (Einheit: ?) zurueck.
     
     Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
     
@@ -1711,9 +1715,11 @@ class ftTXTexchange(threading.Thread):
           if self._txt._sound_state == self._txt.C_SND_STATE_IDLE:
             if self._txt.getCurrentSoundCmdId() != self._txt.getSoundCmdId():
               res = self._txt._spi.xfer([self._txt.C_SND_CMD_RESET, 0, 0])
+              self._txt._exchange_data_lock.acquire()
               self._txt._sound_state          = self._txt.C_SND_STATE_DATA
               self._txt._sound_data_idx       = 0
               self._txt._sound_current_rep    = 0
+              self._txt._exchange_data_lock.release()
 
           if self._txt._sound_state == self._txt.C_SND_STATE_DATA:
             res = self._txt._spi.xfer([self._txt.C_SND_CMD_STATUS, self._txt.getSoundCmdId(), 0])
@@ -1967,7 +1973,7 @@ class ftrobopy(ftTXT):
       Anwedungsbeispiel:
       
       >>> import ftrobopy
-      >>> ftrob = ftrobopy.ftrobopy('192.168.7.2', 65000)
+      >>> ftrob = ftrobopy.ftrobopy('auto')
     """
     def probe_socket(host, p=65000, timeout=0.5):
       s = socket.socket()
