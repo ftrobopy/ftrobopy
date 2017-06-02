@@ -1986,6 +1986,7 @@ class ftrobopy(ftTXT):
       s.close()
       return ok
         
+    self._txt_is_initialized = False
     if host[:4] == 'auto' or host == '127.0.0.1' or host == 'localhost':
       # first check if running on TXT:
       if str.find(socket.gethostname(), 'FT-txt') >= 0 or str.find(socket.gethostname(), 'ft-txt') >= 0:
@@ -2023,8 +2024,7 @@ class ftrobopy(ftTXT):
           else:
             print("Error: could not auto detect TXT connection. Please specify host and port manually !")
             return
-
-    self._txt_is_initialized = False
+          
     if host[:6] == 'direct':
       # check if running on FT-txt
       if str.find(socket.gethostname(), 'FT-txt') < 0 and str.find(socket.gethostname(), 'ft-txt') < 0:
