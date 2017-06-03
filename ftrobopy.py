@@ -20,11 +20,16 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.71"
+__version__     = "1.75"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "02/19/2017"
+__date__        = "06/03/2017"
+
+try:
+  xrange
+except NameError:
+  xrange = range
 
 def version():
   """
@@ -136,21 +141,22 @@ class ftTXT(object):
       >>> import ftrobopy
       >>> txt = ftrobopy.ftTXT('192.168.7.2', 65000)
     """
-    self._m_devicename      = b''
-    self._m_version         = 0
-    self._host              = host
-    self._port              = port
-    self._ser_port          = serport
-    self.handle_error       = on_error
-    self.handle_data        = on_data
-    self._directmode        = directmode
-    self._spi               = None
-    self._SoundFilesDir     = ''
-    self._SoundFilesList    = []
-    self._sound_state       = 0  # current state of sound-communication state-machine in 'direct'-mode
-    self._sound_data        = [] # curent buffer for sound data (wav-file[44:])
-    self._sound_data_idx    = 0
-    self._sound_current_rep = 0
+    self._m_devicename         = b''
+    self._m_version            = 0
+    self._host                 = host
+    self._port                 = port
+    self._ser_port             = serport
+    self.handle_error          = on_error
+    self.handle_data           = on_data
+    self._directmode           = directmode
+    self._spi                  = None
+    self._SoundFilesDir        = ''
+    self._SoundFilesList       = []
+    self._sound_state          = 0  # current state of sound-communication state-machine in 'direct'-mode
+    self._sound_data           = [] # curent buffer for sound data (wav-file[44:])
+    self._sound_data_idx       = 0
+    self._sound_current_rep    = 0
+    self._sound_current_volume = 100
     if self._directmode:
       import serial
       self._ser_ms     = serial.Serial(self._ser_port, 230000, timeout=1)
@@ -814,6 +820,7 @@ class ftTXT(object):
           self._sound_data += filler
           self._sound_data_idx = 0
           self._exchange_data_lock.release()
+          self._sound_current_volume = 100
     return None
 
   def getSoundIndex(self):
@@ -860,6 +867,59 @@ class ftTXT(object):
       >>> repeat_rate = txt.getSoundRepeat()
     """
     return self._sound_repeat
+
+  def setSoundVolume(self, volume):
+    """
+      Setzt die Lautstaerke, mit der Sounds abgespielt werden.
+
+      :param volume: 0=nicht hoehrbar bis 100=maximale Lautstaerke (Default=100).
+      :type idx: integer
+      
+      Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
+      
+      Anwendungsbeispiel:
+    
+      >>> txt.setSoundVolume(10)   # Lautstaerke auf 10% einstellen
+    """
+    if self._directmode:
+      if volume > 100:
+        volume = 100
+      if volume < 0:
+        volume = 0
+      if volume > self.getSoundVolume():
+        # load wav-file again when increasing volume to get best results
+        self.setSoundIndex(self.getSoundIndex())
+      if self._sound_current_volume != volume:
+        self._sound_current_volume = volume
+        self._exchange_data_lock.acquire()
+        for i in xrange(0, len(self._sound_data)):
+          w = self._sound_current_volume * self._sound_data[i] / 100
+          self._sound_data[i] = int(w) & 0xff
+        self._sound_data_idx = 0
+        self._exchange_data_lock.release()
+    else:
+      print("setSoundVolume() steht nur im 'direct'-Modus zur Verfuegung.")
+      return None
+
+  def getSoundVolume(self):
+    """
+      Gibt die aktuelle Lautstaerke, mit der Sounds abgespielt werden, zurueck.
+
+      :return: 0=nicht hoehrbar bis 100=volle Lautstaerke
+      :rtype: integer
+      
+      Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.
+      
+      Anwendungsbeispiel:
+    
+      >>> v=txt.getSoundVolume(50)
+      >>> print("Aktuell gesetzte Sound-Lautstaerke=", v)
+    """
+    if self._directmode:
+      return self._sound_current_volume
+    else:
+      print("getSoundVolume() steht nur im 'direct'-Modus zur Verfuegung.")
+      return None
 
   def getCounterCmdId(self, idx=None):
     """
@@ -2717,14 +2777,14 @@ class ftrobopy(ftTXT):
     else:
       return False
 
-  def play_sound(self, idx, repeat=1):
+  def play_sound(self, idx, repeat=1, volume=100):
     """
       Einen Sound ein- oder mehrmals abspielen.
       
       *  0 : Kein Sound (=Soundausgabe stoppen)
       *  1 : Flugzeug
       *  2 : Alarm
-      *  3 : GLocke
+      *  3 : Glocke
       *  4 : Bremsen
       *  5 : Autohupe (kurz)
       *  6 : Autohipe (lang)
@@ -2758,17 +2818,23 @@ class ftrobopy(ftTXT):
       :param repeat: Anzahl der Wiederholungen (default=1)
       :type repeat: integer
       
+      :param volume: Lautstaerke, mit der der Sound abgespielt wird (0=nicht hoehrbar, 100=maximale Lautstaerke, default=100). Die Lautstaerke kann nur im 'direct'-Modus veraendert werden.
+      :type volume: integer
+      
       :return: Leer
       
       Anwendungsbeispiel:
       
       >>> ftrob.play_sound(27, 5) # 5 mal hintereinander das Fahrgeraeusch abspielen
+      >>> ftrob.play_sound(5, repeat=2, volume=10) # 2 mal hintereinander leise hupen
     """
-    self._exchange_data_lock.acquire()
-    self.setSoundIndex(idx)
+    
+    if idx != self.getSoundIndex():
+      self.setSoundIndex(idx)
+    if volume != self.getSoundVolume and self._directmode:
+      self.setSoundVolume(volume)
     self.setSoundRepeat(repeat)
     self.incrSoundCmdId()
-    self._exchange_data_lock.release()
 
   def stop_sound(self):
     """
@@ -2781,9 +2847,7 @@ class ftrobopy(ftTXT):
       
       >>> ftrob.stop_sound()
     """
-    self._exchange_data_lock.acquire()
     self.setSoundIndex(0)
     self.setSoundRepeat(1)
     self.incrSoundCmdId()
-    self._exchange_data_lock.release()
 
