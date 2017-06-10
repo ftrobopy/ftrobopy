@@ -8,5 +8,5 @@ setup(name='ftrobopy',
       url='https://github.com/ftrobopy/ftrobopy',
       download_url='https://github.com/ftrobopy/ftrobopy/archive/1.80.tar.gz',
       license='MIT',
-      py_modules=['ftrobopy']]
+      py_modules=['ftrobopy']
       )
