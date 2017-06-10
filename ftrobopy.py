@@ -2,7 +2,7 @@
 ***********************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 ***********************************************************************
-(c) 2016 by Torsten Stuehn
+(c) 2015, 2016, 2017 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.75"
+__version__     = "1.8"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "06/03/2017"
+__date__        = "06/10/2017"
 
 try:
   xrange

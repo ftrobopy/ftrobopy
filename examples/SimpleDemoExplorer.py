@@ -1,7 +1,7 @@
 import sys
 import ftrobopy
 
-txt=ftrobopy.ftrobopy('192.168.8.2', 65000)
+txt=ftrobopy.ftrobopy('auto')
 
 Motor_rechts = txt.motor(1)
 Motor_links  = txt.motor(2)

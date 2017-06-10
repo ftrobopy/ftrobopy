@@ -4,7 +4,7 @@ import random
 import time
 import sys
 
-txt=ftrobopy.ftrobopy('127.0.0.1', 65000)
+txt=ftrobopy.ftrobopy('auto')
 
 ml=txt.motor(1)
 mr=txt.motor(2)
