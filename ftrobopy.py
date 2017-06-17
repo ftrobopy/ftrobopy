@@ -14,7 +14,7 @@ import socket
 import threading
 import struct
 import time
-from math import sqrt
+from math import sqrt, log
 
 __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
@@ -2362,36 +2362,47 @@ class ftrobopy(ftTXT):
         self._num=num
       def state(self):
         return self._outer.getCurrentInput(num-1)
-    
+
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
     return inp(self, num)
-  
+
   def resistor(self, num):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.
-    
+
       Anwendungsbeispiel:
-    
+
       >>> R = ftrob.resistor(7)
-    
+
       Das so erzeugte Widerstands-Objekt hat folgende Methoden:
-    
+
       **value** ()
-    
+
       Mit dieser Methode wird der Widerstand abgefragt.
-    
+
       :param num: Nummer des Eingangs, an dem der Widerstand angeschlossen ist (1 bis 8)
       :type num: integer
-    
+
       :return: Der am Eingang anliegende Widerstandswert in Ohm fuer Widerstaende bis 15kOhm, fuer hoehere Widerstandswerte wird immer 15000 zurueckgegeben
       :rtype: integer
-    
+
       Anwendungsbeispiel:
-    
+
       >>> print("Der Widerstand betraegt ", R.value())
+
+      **temp** ()
+
+      Mit dieser Methode wird die Temperatur des NTC-Widerstands abgefragt.
+
+      :return: Die Temperatur des am Eingang angeschlossenen Widerstandes in Grad Celsius.
+      :rtype: float
+
+      Anwendungsbeispiel:
+
+      >>> print("Die Temperatur betraegt ", R.temp())
     """
     class inp(object):
       def __init__(self, outer, num):
@@ -2399,7 +2410,14 @@ class ftrobopy(ftTXT):
         self._num=num
       def value(self):
         return self._outer.getCurrentInput(num-1)
-  
+      def temp(self):
+        x = log(self.value())
+        y = x * x * 1.39323522
+        z = x * -43.9417405
+        T = y + z + 271.870481
+        return T
+
+
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
     self.setConfig(M, I)
