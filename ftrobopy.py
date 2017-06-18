@@ -2410,7 +2410,7 @@ class ftrobopy(ftTXT):
         self._num=num
       def value(self):
         return self._outer.getCurrentInput(num-1)
-      def temp(self):
+      def ntcTemperature(self):
         r = self.value()
         if r != 0:
           x = log(self.value())
