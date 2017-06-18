@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.8"
+__version__     = "1.81"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "06/10/2017"
+__date__        = "06/18/2017"
 
 try:
   xrange
@@ -2393,16 +2393,16 @@ class ftrobopy(ftTXT):
 
       >>> print("Der Widerstand betraegt ", R.value())
 
-      **temp** ()
+      **ntcTemperature** ()
 
-      Mit dieser Methode wird die Temperatur des NTC-Widerstands abgefragt.
+      Mit dieser Methode wird die Temperatur des fischertechnik NTC-Widerstands abgefragt.
 
       :return: Die Temperatur des am Eingang angeschlossenen Widerstandes in Grad Celsius.
       :rtype: float
 
       Anwendungsbeispiel:
 
-      >>> print("Die Temperatur betraegt ", R.temp())
+      >>> print("Die Temperatur des fischertechnik NTC-Widerstands betraegt ", R.ntcTemperature())
     """
     class inp(object):
       def __init__(self, outer, num):
@@ -2411,10 +2411,14 @@ class ftrobopy(ftTXT):
       def value(self):
         return self._outer.getCurrentInput(num-1)
       def temp(self):
-        x = log(self.value())
-        y = x * x * 1.39323522
-        z = x * -43.9417405
-        T = y + z + 271.870481
+        r = self.value()
+        if r != 0:
+          x = log(self.value())
+          y = x * x * 1.39323522
+          z = x * -43.9417405
+          T = y + z + 271.870481
+        else:
+          T = 10000
         return T
 
 
