@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.82"
+__version__     = "1.83"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "06/19/2017"
+__date__        = "12/30/2017"
 
 try:
   xrange
@@ -1625,9 +1625,9 @@ class ftTXTexchange(threading.Thread):
         #fmtstr += 'B'    # [3]     bit pattern of connected txt extension modules, 0 = only master
         #fmtstr += 'B'    # [4]     digital input bits
         #fmtstr += 'BBBB' # [5:9]   analog inputs I1-I4 bits 0-7
-        #fmtstr += 'BBB'  # [9:12]  analog inputs I1-I4 bits 8-12 : 22111111 33332222 44444433
+        #fmtstr += 'BBB'  # [9:12]  analog inputs I1-I4 bits 8-13 : 22111111 33332222 44444433  |  44444433 33332222 22111111
         #fmtstr += 'BBBB' # [12:16] analog inputs I5-I8 bits 0-7
-        #fmtstr += 'BBB'  # [16:19] analog inputs I5-I8 bits 8-12 : 66555555 77776666 88888877
+        #fmtstr += 'BBB'  # [16:19] analog inputs I5-I8 bits 8-13 : 66555555 77776666 88888877  |  88888877 77776666 66555555
         #fmtstr += 'B'    # [19]    voltage power supply analog bits 0-7
         #fmtstr += 'B'    # [20]    temperature analog bits 0-7
         #fmtstr += 'B'    # [21]    pwr and temp bits 8-12: ttpp pppp
@@ -1674,17 +1674,17 @@ class ftTXTexchange(threading.Thread):
             if k == 0:
               self._txt._current_input[k] = response[5]  + 256 * (response[9] & 0x3F)
             elif k == 1:
-              self._txt._current_input[k] = response[6]  + 256 * (((response[9]  >> 6) & 0x03) + (response[10] << 2) & 0x3C)
+              self._txt._current_input[k] = response[6]  + 256 * (((response[9]  >> 6) & 0x03) + ((response[10] << 2) & 0x3C))
             elif k == 2:
-              self._txt._current_input[k] = response[7]  + 256 * (((response[10] >> 4) & 0x0F) + (response[11] << 4) & 0x30)
+              self._txt._current_input[k] = response[7]  + 256 * (((response[10] >> 4) & 0x0F) + ((response[11] << 4) & 0x30))
             elif k == 3:
               self._txt._current_input[k] = response[8]  + 256 * ((response[11]  >> 2) & 0x3F)
             elif k == 4:
               self._txt._current_input[k] = response[12] + 256 * (response[16] & 0x3F)
             elif k == 5:
-              self._txt._current_input[k] = response[13] + 256 * (((response[16] >> 6) & 0x03) + (response[17] << 2) & 0x3C)
+              self._txt._current_input[k] = response[13] + 256 * (((response[16] >> 6) & 0x03) + ((response[17] << 2) & 0x3C))
             elif k == 6:
-              self._txt._current_input[k] = response[14] + 256 * (((response[17] >> 4) & 0x0F) + (response[18] << 4) & 0x30)
+              self._txt._current_input[k] = response[14] + 256 * (((response[17] >> 4) & 0x0F) + ((response[18] << 4) & 0x30))
             elif k == 7:
               self._txt._current_input[k] = response[15] + 256 * ((response[18]  >> 2) & 0x3F)
         
