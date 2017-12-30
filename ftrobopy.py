@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.83"
+__version__     = "1.84"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
@@ -2367,6 +2367,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
+    self.updateWait()
     return inp(self, num)
 
   def resistor(self, num):
@@ -2426,6 +2427,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    self.updateWait()
     return inp(self, num)
 
   def ultrasonic(self, num):
@@ -2464,6 +2466,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    self.updateWait()
     return inp(self, num)
   
   def voltage(self, num):
@@ -2501,6 +2504,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    self.updateWait()
     return inp(self, num)
 
   def colorsensor(self, num):
@@ -2558,6 +2562,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    self.updateWait()
     return inp(self, num)
 
   def trailfollower(self, num):
@@ -2604,6 +2609,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
+    self.updateWait()
     return inp(self, num)
   
   def joystick(self, joynum, remote_number=0, remote_type=0):
@@ -2872,4 +2878,3 @@ class ftrobopy(ftTXT):
     self.setSoundIndex(0)
     self.setSoundRepeat(1)
     self.incrSoundCmdId()
-
