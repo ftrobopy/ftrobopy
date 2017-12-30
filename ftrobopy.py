@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.83"
+__version__     = "1.84"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
@@ -2128,7 +2128,7 @@ class ftrobopy(ftTXT):
       if self._ser_ms:
         self._ser_ms.close()
 
-  def motor(self, output):
+  def motor(self, output, wait=True):
     """
       Diese Funktion erzeugt ein Motor-Objekt, das zur Ansteuerung eines Motors verwendet wird,
       der an einem der Motorausgaenge M1-M4 des TXT angeschlossen ist. Falls auch die schnellen
@@ -2287,9 +2287,11 @@ class ftrobopy(ftTXT):
     M[output-1] = ftTXT.C_MOTOR
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return mot(self, output)
 
-  def output(self, num, level=0):
+  def output(self, num, level=0, wait=True):
     """
       Diese Funktion erzeugt ein allgemeines Output-Objekt, das zur Ansteuerung von Elementen verwendet
       wird, die an den Ausgaengen O1-O8 angeschlossen sind.
@@ -2329,9 +2331,11 @@ class ftrobopy(ftTXT):
     M[int((num-1)/2)] = ftTXT.C_OUTPUT
     self.setConfig(M, I)
     self.updateConfig()
-    return out(self, num, level)    
+    if self._directmode and wait:
+      self.updateWait()
+    return out(self, num, level)
 
-  def input(self, num):
+  def input(self, num, wait=True):
     """
       Diese Funktion erzeugt ein digitales (Ein/Aus) Input-Objekt, an einem der Eingaenge I1-I8.  Dies kann z.B. ein Taster, ein Photo-Transistor oder auch ein Reed-Kontakt sein.
       
@@ -2367,9 +2371,11 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return inp(self, num)
 
-  def resistor(self, num):
+  def resistor(self, num, wait=True):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.
 
@@ -2421,14 +2427,15 @@ class ftrobopy(ftTXT):
           T = 10000
         return T
 
-
     M, I = self.getConfig()
     I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return inp(self, num)
 
-  def ultrasonic(self, num):
+  def ultrasonic(self, num, wait=True):
     """
       Diese Funktion erzeugt ein Objekt zur Abfrage eines an einem der Eingaenge I1-I8 angeschlossenen
       TX/TXT-Ultraschall-Distanzmessers.
@@ -2464,9 +2471,11 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return inp(self, num)
   
-  def voltage(self, num):
+  def voltage(self, num, wait=True):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Spannungspegels, der an einem der Eingaenge I1-I8 angeschlossenen ist. Damit kann z.B. auch der Ladezustand des Akkus ueberwacht werden. Der fischertechnik Farbsensor kann auch mit diesem Objekt abgefragt werden.
       
@@ -2501,9 +2510,11 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return inp(self, num)
 
-  def colorsensor(self, num):
+  def colorsensor(self, num, wait=True):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des fischertechnik Farbsensors.
       Beim Farbsensor handelt es sich um einen Fototransistor, der das von einer Oberflaeche
@@ -2558,9 +2569,11 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return inp(self, num)
 
-  def trailfollower(self, num):
+  def trailfollower(self, num, wait=True):
     """
       Diese Funktion erzeugt ein digitales Input-Objekt zur Abfrage eines Spursensors, der an einem der Eingaenge I1-I8 angeschlossenen ist.
       (Intern ist diese Funktion identisch zur voltage()-Funktion und misst die anliegende Spannung in mV).
@@ -2604,6 +2617,8 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
+    if self._directmode and wait:
+      self.updateWait()
     return inp(self, num)
   
   def joystick(self, joynum, remote_number=0, remote_type=0):
