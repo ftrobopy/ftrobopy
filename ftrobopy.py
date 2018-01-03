@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.84"
+__version__     = "1.85"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
@@ -2287,7 +2287,7 @@ class ftrobopy(ftTXT):
     M[output-1] = ftTXT.C_MOTOR
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return mot(self, output)
 
@@ -2331,7 +2331,7 @@ class ftrobopy(ftTXT):
     M[int((num-1)/2)] = ftTXT.C_OUTPUT
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return out(self, num, level)
 
@@ -2371,7 +2371,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return inp(self, num)
 
@@ -2431,7 +2431,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return inp(self, num)
 
@@ -2471,7 +2471,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return inp(self, num)
   
@@ -2510,7 +2510,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return inp(self, num)
 
@@ -2569,7 +2569,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return inp(self, num)
 
@@ -2617,7 +2617,7 @@ class ftrobopy(ftTXT):
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_DIGITAL)
     self.setConfig(M, I)
     self.updateConfig()
-    if self._directmode and wait:
+    if wait:
       self.updateWait()
     return inp(self, num)
   
