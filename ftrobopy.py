@@ -2,7 +2,7 @@
 ***********************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 ***********************************************************************
-(c) 2015, 2016, 2017 by Torsten Stuehn
+(c) 2015, 2016, 2017, 2018 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -17,14 +17,14 @@ import time
 from math import sqrt, log
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015, 2016, 2017 by Torsten Stuehn"
+__copyright__   = "Copyright 2015, 2016, 2017, 2018 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.85"
+__version__     = "1.86"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "12/30/2017"
+__date__        = "19/05/2018"
 
 try:
   xrange
@@ -195,13 +195,17 @@ class ftTXT(object):
       self._ser_ms            = None
     self._txt_stop_event      = threading.Event()
     self._camera_stop_event   = threading.Event()
+    self._bt_joystick_stop_event = threading.Event()
     self._txt_stop_event.set()
     self._camera_stop_event.set()
+    self._bt_joystick_stop_event.set()
     self._exchange_data_lock  = threading.RLock()
     self._camera_data_lock    = threading.Lock()
+    self._bt_joystick_lock    = threading.RLock()
     self._socket_lock         = threading.Lock()
     self._txt_thread          = None
     self._camera_thread       = None
+    self._bt_joystick_thread  = None
     self._update_status       = 0
     self._update_timer        = time.time()
     self._cycle_count         = 0
@@ -249,6 +253,12 @@ class ftTXT(object):
     self._ir_current_rjoy_up_down    = [0,0,0,0,0] # -15 ... 15
     self._ir_current_buttons         = [0,0,0,0,0] # 0:OFF 1:ON
     self._ir_current_dip_switch      = [0,0,0,0,0] # 0:all 1:0-0 2:1-0 3:0-1 4:1-1
+    self._bt_ljoy_left_right         = 0 # -32767 ... 32512
+    self._bt_ljoy_up_down            = 0 # -32767 ... 32512
+    self._bt_rjoy_left_right         = 0 # -32767 ... 32512
+    self._bt_rjoy_up_down            = 0 # -32767 ... 32512
+    #self._bt_buttons                 = 0 # the bluetooth remote has no detectable buttons
+    #self._bt_dip_switch              = 0 # and no dip switches; currently only one bt remote can be connected
     self._current_power           = 0 # voltage of battery or power supply
     self._current_temperature     = 0 # temperature of ARM CPU
     self._current_reference_power = 0
@@ -261,6 +271,9 @@ class ftTXT(object):
   
   def cameraIsOnline(self):
     return (not self._camera_stop_event.isSet()) and (self._camera_thread is not None)
+
+  def btJoystickIsOnline(self):
+    return (not self._by_joystick_stop_event.isSet()) and (self._bt_joystick_thread is not None)
   
   def queryStatus(self):
     """
@@ -360,7 +373,7 @@ class ftTXT(object):
         self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
         self._txt_thread.setDaemon(True)
         self._txt_thread.start()
-        # keep_connection_thread is needed when using SyncDataBegin/End in interactive python mode
+        # keep_connection_thread is only needed when using SyncDataBegin/End in interactive python mode
         #self._txt_keep_connection_stop_event = threading.Event()
         #self._txt_keep_connection_thread = ftTXTKeepConnection(self, 1.0, self._txt_keep_connection_stop_event)
         #self._txt_keep_connection_thread.setDaemon(True)
@@ -1975,6 +1988,42 @@ class camera(threading.Thread):
     self._camera_data_lock.release()
     return data
 
+class BTJoystickEval(threading.Thread):
+  """
+  Thread zur kontinuierlichen Abfrage einer fischertech Bluetooth Fernbedienung
+  sleep_between_updates ist die Zeit, die zwischen zwei Abfragen gewartet wird.
+  Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
+  """
+  def __init__(self, txt, sleep_between_updates, stop_event, jsdev):
+    threading.Thread.__init__(self)
+    self._txt                               = txt
+    self._bt_joystick_sleep_between_updates = sleep_between_updates
+    self._bt_joystick_stop_event            = stop_event
+    self._bt_joystick_interval_timer        = time.time()
+    self._jsdev                             = jsdev
+    return
+  
+  def run(self):
+    while not self._bt_joystick_stop_event.isSet():
+      if (self._bt_joystick_sleep_between_updates > 0):
+        time.sleep(self._bt_joystick_sleep_between_updates)
+      self._txt._bt_joystick_lock.acquire()
+      if self._jsdev:
+        buf = self._jsdev.read(8)
+        if buf:
+          t, v, evt, n = struct.unpack('IhBB', buf)
+          if evt & 0x02:
+            #print("axe ", n, " value=", v)
+            if n == 0:
+              self._txt._bt_ljoy_left_right = v
+            elif n == 1:
+              self._txt._bt_ljoy_up_down = v
+            elif n == 2:
+              self._txt._bt_rjoy_left_right = v
+            elif n == 3:
+              self._txt._bt_rjoy_up_down = v
+      self._txt._bt_joystick_lock.release()
+
 class ftrobopy(ftTXT):
   """
     Erweiterung der Klasse ftrobopy.ftTXT. In dieser Klasse werden verschiedene fischertechnik Elemente
@@ -1989,7 +2038,7 @@ class ftrobopy(ftTXT):
     * **voltage**, zum Messen einer Spannung
     * **colorsensor**, zur Abfrage des fischertechnik Farbsensors
     * **trailfollower**, zur Abfrage des fischertechnik Spursensors
-    * **joystick**, zur Abfrage eines Joysticks einer fischertechnik IR-Fernbedienung
+    * **joystick**, zur Abfrage eines Joysticks einer fischertechnik IR-Fernbedienung (BT-Fernbedienung nur mit cfw > 0.9.4 moeglich)
     * **joybutton**, zur Abfrage eines Buttons einer fischertechnik IR-Fernbedienung
     * **joydipswitch**, zur Abfrage der DIP-Schalter-Einstellung einer IR-Fernbedienung
 
@@ -2640,12 +2689,28 @@ class ftrobopy(ftTXT):
       + ON  ON  : Nummer 4
       
       Wird der parameter remote_number=0 gesetzt, kann damit jede der 4 moeglichen Fernbedienungen abgefragt werden, unabhaengig von ihren DIP-Schalter Einstellungen. Dies ist die Standardeinstellung, falls der Parameter nicht angegeben wird.
+
+      :param remote_type: 0: (rote) IR Infrarot-Fernbedienung, 1: (blaue) BT Bluetooth-Fernbedienung
+
+      Anmerkungen zur BT-Fernbedienung:
+
+      * Die BT-Fernbedienung kann derzeit nur mit der Community-Firmware (cfw Version > 0.9.4) im Offline-Modus (direct) verwendet werden.
+      * Bevor die BT-Fernbedienung verwendet werden kann, muss zuerst der ft_bt_server-Prozess gestartet werden. Dies kann auf der TXT-Kommandozeile mit dem Befehl: **sudo ft_bt_server** erreicht werden. Alternativ kann der ft_bt_server-Prozess auch ueber die cfw-App **LNT BT-Server** ueber den Touchscreen des TXT gestartet werden.
+      * Es kann nur eine BT Fernbedienung abgefragt werden. Der Parameter :param remote_number: wird dann automatisch auf 0 gesetzt.
+      * Die Buttons/Knoepfe der blauen BT-Fernbedienung werden von dieser nicht uebertragen und koennen deshalb nicht abgefragt werden.
+      * Die BT-Fernbedienung hat intern die doppelte (integer) Aufloesung [-30 ... +30] der IR-Fernbedienung [-15 ... +15]. Beide Wertebereiche werden auf den (float) Bereich [-1.0 ... +1.0] gemappt.
+
+      **Achtung Neu :** das Mapping auf den Wertebereich [-1.0 ... +1.0] besteht erst seit der ftrobopy-Version 1.86. In den vorherigen Versionen wurde der (integer) Bereich [-15 ... +15] zurueckgelifert.
+
+      Insgesamt koennen an einem TXT gleichzeitig 4 verschiedene IR- und eine BT-Fernsteuerung abgefragt werden.
       
       Anwendungsbeispiel:
     
-      >>> joystickLinks   = ftrob.joystick(0)
-      >>> joystickRechts  = ftrob.joystick(1)
-      >>> joystickNummer3 = ftrob.joystick(0, 2) # linker Joystick, der Fernbedienung Nummer 2 (Dip-Switch: ON OFF)
+      >>> joystickLinks      = ftrob.joystick(0)       # linker Joystick aller 4 moeglichen IR-Fernbedienungen
+      >>> joystickRechts     = ftrob.joystick(1)       # rechter Joystick aller 4 moeglichen IR-Fernbedienungen
+      >>> joystickNummer3    = ftrob.joystick(0, 2)    # linker Joystick der IR-Fernbedienung Nummer 2 (Dip-Switch: ON OFF)
+      >>> joystickBlauLinks  = ftrob.joystick(0, 0, 1) # linker Joystick der BT-Fernbedienung
+      >>> joystickBlauRechts = ftrob.joystick(0, 0, 1) # linker Joystick der BT-Fernbedienung
     
       Das so erzeugte Joystick-Objekt hat folgende Methoden:
     
@@ -2653,13 +2718,13 @@ class ftrobopy(ftTXT):
     
       Mit dieser Methode wird die horizontale (links-rechts) Achse abgefragt.
 
-      :return: -15 (Joystick ganz nach links) bis +15 (Joystick ganz nach recht), 0: Mittelstellung
+      :return: -1.0 (Joystick ganz nach links) bis +1.0 (Joystick ganz nach recht), 0: Mittelstellung
 
       **updown** ()
       
       Mit dieser Methode wird die vertikale (hoch-runter) Achse abgefragt.
       
-      :return: -15 (Joystick ganz nach unten) bis +15 (Joystick ganz nach oben), 0: Mittelstellung
+      :return: -1.0 (Joystick ganz nach unten) bis +1.0 (Joystick ganz nach oben), 0: Mittelstellung
       
       Anwendungsbeispiel:
       
@@ -2667,34 +2732,79 @@ class ftrobopy(ftTXT):
       >>> print("Links-Rechts-Stellung=", joystick1.leftright(), " Hoch-Runter-Stellung=", joystick1.updown())
     """
     class remote(object):
-      def __init__(self, outer, joynum, remote_number, remote_type):
+      def __init__(self, outer, joynum, remote_number, remote_type, update_interval=0.01):
         # remote_number: 0=any, 1-4=remote1-4
         # remote_type: IR=0, BT=1
         self._outer=outer
         self._joynum=joynum
         self._remote_number=remote_number
         self._remote_type=remote_type
+        self._jsdev = None
+        if self._remote_type==1: # BT remote
+          self._remote_number = 0 # currently only 1 BT remote is supported
+          if not self.outer._bt_joysstick_stop_event.isSet(): # the BTJoystickEval thread needs to be started only once for the first BT joystick
+            try:
+              self._jsdev = open('/dev/input/js'+str(remote_number), 'rb') # open joystick device
+            except:
+              self._jsdev = None
+              print("Failed to open BT Joystick")
+            if self._jsdev:
+              if self._outer._bt_joystick_stop_event.isSet():
+                 self._outer._bt_joystick_stop_event.clear()
+              if self._outer._bt_joystick_thread is None:
+                self._outer._bt_joystick_thread = BTJoystickEval(txt=self._outer, sleep_between_updates=update_interval, stop_event=self._outer._bt_joystick_stop_event, jsdev=self._jsdev)
+                self._outer._bt_joystick_thread.setDaemon(True)
+                self._outer._bt_joystick_thread.start()
+        return None
+          
       def leftright(self):
         if remote_type==0: # IR remote
           if joynum==0: # left joystick on remote
-            return self._outer._ir_current_ljoy_left_right[remote_number]
+            return 1.0 * self._outer._ir_current_ljoy_left_right[remote_number] / 15.0
           else: # right joystick on remote
-            return self._outer._ir_current_rjoy_left_right[remote_number]
-        else: # BT remote (not yet supported)
-          return 0
+            return 1.0 * self._outer._ir_current_rjoy_left_right[remote_number] / 15.0
+        else: # BT remote
+          if joynum==0: # left joystick on remote
+            v = 1.0 * self._outer._bt_ljoy_left_right
+            if v < 0:
+              v /= 32767.0
+            else:
+              v /= 32512.0
+            return v
+          else: # right joystick on remote 
+            v = 1.0 * self._outer._bt_rjoy_left_right
+            if v < 0:
+              v /= 32767.0
+            else:
+              v /= 32512.0
+            return v
       def updown(self):
         if remote_type==0: # IR remote
           if joynum==0: # left joystick on remote
-            return self._outer._ir_current_ljoy_up_down[remote_number]
+            return 1.0 * self._outer._ir_current_ljoy_up_down[remote_number] / 15.0
           else: # right joystick on remote
-            return self._outer._ir_current_rjoy_up_down[remote_number]
-        else: # BT remote (not yet supported)
-          return 0
+            return 1.0 * self._outer._ir_current_rjoy_up_down[remote_number] / 15.0
+        else: # BT remote 
+          if joynum==0: # left joystick on remote
+            v = 1.0 * self._outer._bt_ljoy_up_down
+            if v <= 0:
+              v /= -32767.0
+            else:
+              v /= -32512.0
+            return v
+          else: # right joystick on remote
+            v = 1.0 * self._outer._bt_rjoy_up_down
+            if v <= 0:
+              v /= -32767.0
+            else:
+              v /= -32512.0
+            return v
     return remote(self, joynum, remote_number, remote_type)
 
   def joybutton(self, buttonnum, remote_number=0, remote_type=0):
     """
       Diese Funktion erzeugt ein Input-Objekt zur Abfrage eines Buttons einer fischertechnik IR-Fernbedienung.
+      Die Funktion kann nur mit den IR-Fernbedienungen sinnvoll verwendet werden. Die blaue BT-Fernbedienung uebertraegt die Button-Signale nicht.
 
       :param buttonnum: Nummer des Buttons, der abgefragt werden soll.
        
@@ -2712,6 +2822,10 @@ class ftrobopy(ftTXT):
       
       Wird der parameter remote_number=0 gesetzt, kann damit jede der 4 moeglichen Fernbedienungen abgefragt werden, unabhaengig von ihren DIP-Schalter Einstellungen. Dies ist die Standardeinstellung, falls der Parameter nicht angegeben wird.
       
+      :param remote_type: 0: (rote) IR Infrarot-Fernbedienung, 1: (blaue) BT Bluetooth-Fernbedienung
+
+      Dieser Parameter ist nur aus Gruenden der Kompatibilitaet vorhanden. Die BT-Fernbedienung uebertraegt keine Button-Signale.
+      
       Anwendungsbeispiel:
     
       >>> buttonON    = ftrob.joybutton(0)
@@ -2723,6 +2837,7 @@ class ftrobopy(ftTXT):
       **pressed** ()
     
       Mit dieser Methode wird abgefragt, ob der Button gedrueckt ist.
+      Anmerkung: Im Falle der BT-Fernbedienung wird hier immer der Wert False zurueckgeliefert.
 
       :return: False (=Button ist nicht gedrueckt) oder True (=Button ist gedrueckt)
       :rtype: boolean
@@ -2754,14 +2869,19 @@ class ftrobopy(ftTXT):
               return True
             else:
               return False
-        else: # BT remote (not yet supported)
-          return 0
+        else: # BT remote has no buttons
+          return False
     return remote(self, buttonnum, remote_number, remote_type)
 
   def joydipswitch(self, remote_type=0):
     """
       Diese Funktion erzeugt ein Input-Objekt zur Abfrage des DIP-Schalters einer fischertechnik IR-Fernbedienung.
+      Die Funktion kann nur mit den IR-Fernbedienungen sinnvoll verwendet werden. Die blaue BT-Fernbedienung hat keine DIP-Schalter.
 
+      :param remote_type: 0: (rote) IR Infrarot-Fernbedienung, 1: (blaue) BT Bluetooth-Fernbedienung
+
+      Dieser Parameter ist nur aus Gruenden der Kompatibilitaet vorhanden. Die BT-Fernbedienung hat keine DIP-Schalter.
+      
       Anwendungsbeispiel:
     
       >>> IR_DipSchalter = ftrob.joydipswitch()
@@ -2777,7 +2897,7 @@ class ftrobopy(ftTXT):
       + OFF ON   = 2
       + ON  ON   = 3
 
-      :return: Wert des DIP-Schalters (0-3)
+      :return: Wert des DIP-Schalters (0-3). Der Rueckgabewert bei Verwendung der BT-Fernbedienung ist hier immer 0.
       :rtype: integer
       
       Anwendungsbeispiel:
@@ -2793,7 +2913,7 @@ class ftrobopy(ftTXT):
       def setting(self):
         if remote_type==0: # IR remote
           return self._outer._ir_current_dip_switch[0]
-        else: # BT remote (not yet supported)
+        else: # BT remote has no dip switches
           return 0
     return remote(self, remote_type)
 
