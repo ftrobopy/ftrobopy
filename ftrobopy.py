@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017, 2018 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.86"
+__version__     = "1.87"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "19/05/2018"
+__date__        = "21/05/2018"
 
 try:
   xrange
@@ -267,14 +267,11 @@ class ftTXT(object):
     self._exchange_data_lock.release() 
 
   def isOnline(self):
-    return (not self._txt_stop_event.isSet()) and (self._txt_thread is not None)
+    return (not self._txt_stop_event.is_set()) and (self._txt_thread is not None)
   
   def cameraIsOnline(self):
-    return (not self._camera_stop_event.isSet()) and (self._camera_thread is not None)
+    return (not self._camera_stop_event.is_set()) and (self._camera_thread is not None)
 
-  def btJoystickIsOnline(self):
-    return (not self._by_joystick_stop_event.isSet()) and (self._bt_joystick_thread is not None)
-  
   def queryStatus(self):
     """
        Abfrage des Geraetenamens und der Firmware Versionsnummer des TXT
@@ -367,7 +364,7 @@ class ftTXT(object):
        >>> txt.startOnline()
     """
     if self._directmode == True:
-      if self._txt_stop_event.isSet():
+      if self._txt_stop_event.is_set():
         self._txt_stop_event.clear()
       if self._txt_thread is None:
         self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
@@ -379,7 +376,7 @@ class ftTXT(object):
         #self._txt_keep_connection_thread.setDaemon(True)
         #self._txt_keep_connection_thread.start()
       return None
-    if self._txt_stop_event.isSet():
+    if self._txt_stop_event.is_set():
       self._txt_stop_event.clear()
     else:
       return
@@ -594,7 +591,7 @@ class ftTXT(object):
     if self._directmode:
       # ftrobopy.py does not support camera in direct mode, please use native camera support (e.g. ftrobopylib.so or opencv)
       return
-    if self._camera_stop_event.isSet():
+    if self._camera_stop_event.is_set():
       self._camera_stop_event.clear()
     else:
       return
@@ -2004,7 +2001,7 @@ class BTJoystickEval(threading.Thread):
     return
   
   def run(self):
-    while not self._bt_joystick_stop_event.isSet():
+    while not self._bt_joystick_stop_event.is_set():
       if (self._bt_joystick_sleep_between_updates > 0):
         time.sleep(self._bt_joystick_sleep_between_updates)
       self._txt._bt_joystick_lock.acquire()
@@ -2713,6 +2710,22 @@ class ftrobopy(ftTXT):
       >>> joystickBlauRechts = ftrob.joystick(0, 0, 1) # linker Joystick der BT-Fernbedienung
     
       Das so erzeugte Joystick-Objekt hat folgende Methoden:
+
+      **isConnected** ()
+
+      Mit dieser Methode kann getested werden, ob ein Joystick per Bluetooth mit dem TXT verbunden ist und ob der Abfrage-Thread laeuft. Fuer IR-Joysticks ist dies immer True, da IR-Joysticks nicht extra verbunden werden muessen (der TXT lauscht grundsaetzlich immer an der IR-LED, ob ein Signal empfangen wird).
+
+      :return: True oder False
+
+      Anwendungsbeispiel:
+
+      >>> joy1 = txt.joystick(0,0,1) # 1=BT Joystick
+      >>> joy2 = txt.joystick(0,0,0) # 0=IR Joystick
+      >>> if joy1.isConnected():
+      >>>   print("Ein Bluetooth Joystick ist verbunden.")
+      >>> if joy2.isConnected(): # fuer IR Joysticks ist dieser Wert immer True
+      >>>   print("Ein IR Joystick ist verbunden")
+
     
       **leftright** ()
     
@@ -2741,21 +2754,23 @@ class ftrobopy(ftTXT):
         self._remote_type=remote_type
         self._jsdev = None
         if self._remote_type==1: # BT remote
-          self._remote_number = 0 # currently only 1 BT remote is supported
-          if not self.outer._bt_joysstick_stop_event.isSet(): # the BTJoystickEval thread needs to be started only once for the first BT joystick
-            try:
-              self._jsdev = open('/dev/input/js'+str(remote_number), 'rb') # open joystick device
-            except:
-              self._jsdev = None
-              print("Failed to open BT Joystick")
-            if self._jsdev:
-              if self._outer._bt_joystick_stop_event.isSet():
-                 self._outer._bt_joystick_stop_event.clear()
-              if self._outer._bt_joystick_thread is None:
-                self._outer._bt_joystick_thread = BTJoystickEval(txt=self._outer, sleep_between_updates=update_interval, stop_event=self._outer._bt_joystick_stop_event, jsdev=self._jsdev)
-                self._outer._bt_joystick_thread.setDaemon(True)
-                self._outer._bt_joystick_thread.start()
+          self._remote_number = 0 # only 1 BT remote is supported
+          try:
+            self._jsdev = open('/dev/input/js0', 'rb') # open joystick device
+          except:
+            self._jsdev = None
+            print("Failed to open BT Joystick")
+          if self._jsdev:
+            if self._outer._bt_joystick_stop_event.is_set():
+               self._outer._bt_joystick_stop_event.clear()
+            if self._outer._bt_joystick_thread is None:
+              self._outer._bt_joystick_thread = BTJoystickEval(txt=self._outer, sleep_between_updates=update_interval, stop_event=self._outer._bt_joystick_stop_event, jsdev=self._jsdev)
+              self._outer._bt_joystick_thread.setDaemon(True)
+              self._outer._bt_joystick_thread.start()
         return None
+
+      def isConnected(self):
+        return (not self._outer._bt_joystick_stop_event.is_set()) and (self._outer._bt_joystick_thread is not None)
           
       def leftright(self):
         if remote_type==0: # IR remote
