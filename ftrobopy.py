@@ -2,7 +2,7 @@
 ***********************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 ***********************************************************************
-(c) 2015, 2016, 2017, 2018 by Torsten Stuehn
+(c) 2015, 2016, 2017, 2018, 2019 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -17,14 +17,14 @@ import time
 from math import sqrt, log
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015, 2016, 2017, 2018 by Torsten Stuehn"
+__copyright__   = "Copyright 2015, 2016, 2017, 2018, 2019 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.87"
+__version__     = "1.88"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "21/05/2018"
+__date__        = "01/04/2019"
 
 try:
   xrange
@@ -193,6 +193,9 @@ class ftTXT(object):
       self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
       self._sock.setblocking(1)
       self._ser_ms            = None
+      self._i2c_sock=socket.socket()
+      self._i2c_sock.settimeout(5)
+
     self._txt_stop_event      = threading.Event()
     self._camera_stop_event   = threading.Event()
     self._bt_joystick_stop_event = threading.Event()
@@ -314,6 +317,99 @@ class ftTXT(object):
     self._m_firmware   = 'firmware version '+str(v1)+'.'+str(v2)+'.'+str(v3)
     return m_devicename, m_version
 
+  def i2c_read(self, dev, reg, reg_len=1, data_len=1, debug=False):
+    """
+      I2C lesen
+      
+      :param dev: Die I2C Geraeteadresse
+      :type dev: integer
+
+      :param reg: Das Register, das ausgelesen werden soll (Untergeraeteadresse)
+      :type reg: integer
+
+      :param reg_len: Die Laenge des Registers in Byte (default=1)
+      :type reg_len: integer
+
+      :param data_len: Die Laenge der Datenantwort (default=1)
+      :type data_len: integer
+
+      :return: Die Datenantwort des I2C Geraetes (string)
+
+      Anwendungsbeispiel:
+
+      >>> res=txt.i2c_read(0x18, 0x3f, data_len=6)
+      >>> x,y,z=struct.unpack('>HHH', res)                    
+      >>> print("Beschleunigung des BMX055 Kombisensors in x-, y- und z-Richtung = ",x, y, z)
+    """
+    m_id         = 0xB9DB3B39
+    m_resp_id    = 0x87FD0D90
+    m_command    = 0x01
+    buf          = struct.pack('>IBIIHH', m_id, m_command, dev, reg_len, data_len, reg)
+    if debug:
+      print("i2c_read, sendbuffer: ", end='')
+      for k in buf: print(format(int(k), '02X'), end=' ')
+      print()
+    res          = self._i2c_sock.send(buf)
+    data         = self._i2c_sock.recv(512)
+    if debug:
+      print("i2c_read, receivebuffer: ", end='')
+      for k in data: print(format(int(k), '02X'), end=' ')
+      print()
+    fstr = '>IBIHB'
+    for k in range(data_len): fstr+='B'
+    response_id = 0
+    if len(data) == struct.calcsize(fstr):
+      response_id=struct.unpack(fstr, data)[0]
+    if response_id != m_resp_id:
+      self.handle_error('WARNING: ResponseID %s of I2C read command does not match' % hex(response_id), None)
+      return None
+    return data[-data_len:]
+
+  def i2c_write(self, dev, reg, value, debug=False):                                             
+    """
+      I2C schreiben
+      
+      :param dev: Die I2C Geraeteadresse
+      :type dev: integer
+
+      :param reg: Das Register, das beschrieben werden soll (Untergeraeteadresse)
+      :type reg: integer
+
+      :param value: Der in das Register zu schreibende Wert
+      :type value: integer (0-255)
+
+      :return: True (boolean) bei fehlerfreier Ausfuehrung, sonst "None"
+
+      Anwendungsbeispiel:
+
+      >>> # Settings for BMX055 acceleration
+      >>> txt.i2c_write(0x18, 0x3e, 0x80)                                           
+      >>> txt.i2c_write(0x18, 0x0f, 0x0c)                             
+      >>> txt.i2c_write(0x18, 0x10, 0x0f)                             
+    """
+    m_id         = 0xB9DB3B39                                                 
+    m_resp_id    = 0x87FD0D90                                                 
+    m_command    = 0x02                                                       
+    buf = struct.pack('>IBIIIB',m_id, m_command, dev, 0x02, reg, value)      
+    if debug:
+      print("i2c_write, sendbuffer: ", end='')
+      for k in buf: print(format(int(k), '02X'), end=' ')
+      print()
+    res          = self._i2c_sock.send(buf)
+    data         = self._i2c_sock.recv(512)
+    if debug:
+      print("i2c_write, receivebuffer: ", end='')
+      for k in data: print(format(int(k), '02X'), end=' ')
+      print()
+    fstr = '>III'
+    response_id = 0
+    if len(data) == struct.calcsize(fstr):
+      response_id =struct.unpack(fstr, data)[0]
+    if response_id != m_resp_id:
+      self.handle_error('WARNING: ResponseID %s of I2C write command does not match' % hex(response_id), None)
+      return None
+    return True
+
   def getDevicename(self):
     """
        Liefert den zuvor mit queryStatus() ausgelesenen Namen des TXT zurueck
@@ -403,6 +499,10 @@ class ftTXT(object):
         self._txt_keep_connection_thread = ftTXTKeepConnection(self, 1.0, self._txt_keep_connection_stop_event)
         self._txt_keep_connection_thread.setDaemon(True)
         self._txt_keep_connection_thread.start()
+        time.sleep(0.1)
+        self._i2c_sock.connect((self._host, self._port+2))
+        self._i2c_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._i2c_sock.setblocking(1)
     return None
 
   def stopOnline(self):
