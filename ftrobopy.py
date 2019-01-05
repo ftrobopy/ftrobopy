@@ -338,8 +338,8 @@ class ftTXT(object):
       Anwendungsbeispiel:
 
       >>> res=txt.i2c_read(0x18, 0x3f, data_len=6)
-      >>> x,y,z=struct.unpack('>HHH', res)                    
-      >>> print("Beschleunigung des BMX055 Kombisensors in x-, y- und z-Richtung = ",x, y, z)
+      >>> x,y,z=struct.unpack('<hhh', res)                    
+      >>> print("Beschleunigung des BMX055 Kombisensors in x-, y- und z-Richtung = ", x >> 4 , y >> 4, z >> 4)
     """
     m_id         = 0xB9DB3B39
     m_resp_id    = 0x87FD0D90
