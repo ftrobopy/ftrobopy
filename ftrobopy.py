@@ -410,7 +410,7 @@ class ftTXT(object):
       return None
     return True
 
-  def i2c_write_bytes(self, dev, *argv, debug=False):
+  def i2c_write_bytes(self, dev, *argv):
     m_id = 0xB9DB3B39
     m_resp_id = 0x87FD0D90
 
