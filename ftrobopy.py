@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015, 2016, 2017, 2018, 2019 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.88"
+__version__     = "1.89"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "release"
-__date__        = "01/04/2019"
+__date__        = "12/23/2019"
 
 try:
   xrange
@@ -408,6 +408,63 @@ class ftTXT(object):
     if response_id != m_resp_id:
       self.handle_error('WARNING: ResponseID %s of I2C write command does not match' % hex(response_id), None)
       return None
+    return True
+
+  def i2c_write_bytes(self, dev, *argv, debug=False):
+    m_id = 0xB9DB3B39
+    m_resp_id = 0x87FD0D90
+
+    m_lenth = 0
+    for i in argv:
+      m_lenth += 1
+    buf = struct.pack('>IBIIBBB', m_id, m_lenth, dev, m_lenth, 0x00, 0x00, 0x00)
+    for i in argv:
+      buf += struct.pack('B', i)
+
+    if debug:
+      print("i2c_write, sendbuffer: ", end='')
+      for k in buf: print(format(int(k), '02X'), end=' ')
+      print()
+    res = self._i2c_sock.send(buf)
+    data = self._i2c_sock.recv(512)
+
+    if debug:
+      print("i2c_write, receivebuffer: ", end='')
+      for k in data: print(format(int(k), '02X'), end=' ')
+      print()
+    fstr = '>III'
+    response_id = 0
+    if len(data) == struct.calcsize(fstr):
+      response_id = struct.unpack(fstr, data)[0]
+    if response_id != m_resp_id:
+      self.handle_error('WARNING: ResponseID %s of I2C write command does not match' % hex(response_id), None)
+      return None
+
+    return True
+
+  def i2c_write_buffer(self, dev, buffer, m_length,  debug = False):
+    m_id = 0xB9DB3B39
+    buf = struct.pack('>IBIIBBB', m_id, m_length, dev, m_length, 0x00, 0x00, 0x00) + buffer
+
+    if debug:
+      print("i2c_write, sendbuffer: ", end='')
+      for k in buf: print(format(int(k), '02X'), end=' ')
+      print()
+    res = self._i2c_sock.send(buf)
+    data = self._i2c_sock.recv(512)
+
+    if debug:
+      print("i2c_write, receivebuffer: ", end='')
+      for k in data: print(format(int(k), '02X'), end=' ')
+      print()
+    fstr = '>III'
+    response_id = 0
+    if len(data) == struct.calcsize(fstr):
+      response_id = struct.unpack(fstr, data)[0]
+    if response_id != 0x87FD0D90:
+      self.handle_error('WARNING: ResponseID %s of I2C write command does not match' % hex(response_id), None)
+      return None
+
     return True
 
   def getDevicename(self):
