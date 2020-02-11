@@ -2,7 +2,7 @@
 ***********************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 ***********************************************************************
-(c) 2015, 2016, 2017, 2018, 2019 by Torsten Stuehn
+(c) 2015, 2016, 2017, 2018, 2019, 2020 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -17,14 +17,14 @@ import time
 from math import sqrt, log
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015, 2016, 2017, 2018, 2019 by Torsten Stuehn"
+__copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.89"
+__version__     = "1.90"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
-__status__      = "release"
-__date__        = "12/23/2019"
+__status__      = "beta"
+__date__        = "02/11/2020"
 
 try:
   xrange
@@ -90,6 +90,9 @@ class ftTXT(object):
   C_MOT_INPUT_ANALOG_5K        = 3
   C_MOT_INPUT_ULTRASONIC       = 4
   
+  C_EXT_MASTER                 = 0 # use TXT master
+  C_EXT_SLAVE                  = 1 # use TXT slave extension
+  
   # sound commands and messages for spi communication to motor shield (only needed in direct mode)
   C_SND_CMD_STATUS             = 0x80
   C_SND_CMD_DATA               = 0x81
@@ -108,7 +111,7 @@ class ftTXT(object):
   C_SND_STATE_DATA             = 0x04
 
 
-  def __init__(self, host='127.0.0.1', port=65000, serport='/dev/ttyO2' , on_error=default_error_handler, on_data=default_data_handler, directmode=False):
+  def __init__(self, host='127.0.0.1', port=65000, serport='/dev/ttyO2' , on_error=default_error_handler, on_data=default_data_handler, directmode=False, use_extension=False):
     """
       Initialisierung der ftTXT Klasse:
 
@@ -149,6 +152,7 @@ class ftTXT(object):
     self.handle_error          = on_error
     self.handle_data           = on_data
     self._directmode           = directmode
+    self._use_extension        = use_extension
     self._spi                  = None
     self._SoundFilesDir        = ''
     self._SoundFilesList       = []
@@ -214,14 +218,22 @@ class ftTXT(object):
     self._cycle_count         = 0
     self._sound_timer         = self._update_timer
     self._sound_length        = 0
-    self._config_id           = 0
-    self._config_id_old       = 0
-    self._m_extension_id      = 0
+    self._config_id           = [0,0] # [0]:master [1]:slave
+    self._config_id_old       = 0 # only used in direct mode
+    self._TransferDataChanged = False
     self._ftX1_pgm_state_req  = 0
     self._ftX1_old_FtTransfer = 0
     self._ftX1_dummy          = b'\x00\x00'
-    self._ftX1_motor          = [1,1,1,1]
+    self._ftX1_motor          = [1,1,1,1,1,1,1,1]
     self._ftX1_uni            = [1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
+                                 1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
                                  1,1,b'\x00\x00',
@@ -232,24 +244,28 @@ class ftTXT(object):
     self._ftX1_cnt            = [1,b'\x00\x00\x00',
                                  1,b'\x00\x00\x00',
                                  1,b'\x00\x00\x00',
+                                 1,b'\x00\x00\x00',
+                                 1,b'\x00\x00\x00',
+                                 1,b'\x00\x00\x00',
+                                 1,b'\x00\x00\x00',
                                  1,b'\x00\x00\x00']
-    self._ftX1_motor_config   = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    self._ftX1_motor_config   = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
     self._exchange_data_lock.acquire()
-    self._pwm          = [0,0,0,0,0,0,0,0]
-    self._motor_sync   = [0,0,0,0]
-    self._motor_dist   = [0,0,0,0]
-    self._motor_cmd_id = [0,0,0,0]
-    self._counter      = [0,0,0,0]
+    self._pwm          = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    self._motor_sync   = [0,0,0,0,0,0,0,0]
+    self._motor_dist   = [0,0,0,0,0,0,0,0]
+    self._motor_cmd_id = [0,0,0,0,0,0,0,0]
+    self._counter      = [0,0,0,0,0,0,0,0]
     self._sound        = 0
     self._sound_index  = 0
     self._sound_repeat = 0
-    self._current_input           = [0,0,0,0,0,0,0,0]
-    self._current_counter         = [0,0,0,0]
-    self._current_counter_value   = [0,0,0,0]
-    self._current_counter_cmd_id  = [0,0,0,0]
-    self._current_motor_cmd_id    = [0,0,0,0]
+    self._current_input           = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    self._current_counter         = [0,0,0,0,0,0,0,0]
+    self._current_counter_value   = [0,0,0,0,0,0,0,0]
+    self._current_counter_cmd_id  = [0,0,0,0,0,0,0,0]
+    self._current_motor_cmd_id    = [0,0,0,0,0,0,0,0]
     self._current_sound_cmd_id    = 0
-    self._current_ir              = range(26)
+    self._current_ir              = [0 for i in range(26)]
     self._ir_current_ljoy_left_right = [0,0,0,0,0] # -15 ... 15
     self._ir_current_ljoy_up_down    = [0,0,0,0,0] # -15 ... 15
     self._ir_current_rjoy_left_right = [0,0,0,0,0] # -15 ... 15
@@ -598,7 +614,7 @@ class ftTXT(object):
     self._txt_thread = None
     return None
 
-  def setConfig(self, M, I):
+  def setConfig(self, M, I, ext=C_EXT_MASTER):
     """
        Einstellung der Konfiguration der Ein- und Ausgaenge des TXT.
        Diese Funktion setzt nur die entsprechenden Werte in der ftTXT-Klasse.
@@ -638,12 +654,12 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
-    self._config_id += 1
+    self._config_id[ext] += 1
     # Configuration of motors
     # 0=single output O1/O2
     # 1=motor output M1
     # self.ftX1_motor          = [M[0],M[1],M[2],M[3]]  # BOOL8[4]
-    self._ftX1_motor            = M
+    self._ftX1_motor[4*ext:4*ext+4] = M
     # Universal input mode, see enum InputMode:
     # MODE_U=0
     # MODE_R=1
@@ -651,17 +667,17 @@ class ftTXT(object):
     # MODE_ULTRASONIC=3
     # MODE_INVALID=4
     # print("setConfig I=", I)
-    self._ftX1_uni           = [I[0][0],I[0][1],b'\x00\x00',
-                                I[1][0],I[1][1],b'\x00\x00',
-                                I[2][0],I[2][1],b'\x00\x00',
-                                I[3][0],I[3][1],b'\x00\x00',
-                                I[4][0],I[4][1],b'\x00\x00',
-                                I[5][0],I[5][1],b'\x00\x00',
-                                I[6][0],I[6][1],b'\x00\x00',
-                                I[7][0],I[7][1],b'\x00\x00'] 
+    self._ftX1_uni[12*ext:12*ext+12] = [I[0][0],I[0][1],b'\x00\x00',
+                                        I[1][0],I[1][1],b'\x00\x00',
+                                        I[2][0],I[2][1],b'\x00\x00',
+                                        I[3][0],I[3][1],b'\x00\x00',
+                                        I[4][0],I[4][1],b'\x00\x00',
+                                        I[5][0],I[5][1],b'\x00\x00',
+                                        I[6][0],I[6][1],b'\x00\x00',
+                                        I[7][0],I[7][1],b'\x00\x00']
     return None
 
-  def getConfig(self):
+  def getConfig(self, ext=C_EXT_MASTER):
     """
        Abfrage der aktuellen Konfiguration des TXT
 
@@ -678,12 +694,12 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
-    m  = self._ftX1_motor
-    i  = self._ftX1_uni
+    m  = self._ftX1_motor[4*ext:4*ext+4]
+    i  = self._ftX1_uni[24*ext:24*ext+24]
     ii = [(i[0], i[1]), (i[3], i[4]),(i[6], i[7]),(i[9], i[10]),(i[12], i[13]),(i[15], i[16]),(i[18], i[19]),(i[21], i[22]) ]
     return m, ii 
 
-  def updateConfig(self):
+  def updateConfig(self, ext=C_EXT_MASTER):
     """
        Uebertragung der Konfigurationsdaten fuer die Ein- und Ausgaenge zum TXT
 
@@ -700,17 +716,18 @@ class ftTXT(object):
     if not self.isOnline():
       self.handle_error("Controller must be online before updateConfig() is called", None)
       return
+    #print("updateConfig ext=",ext)
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
-    self._config_id += 1
-    fields = [m_id, self._config_id, self._m_extension_id]
+    self._config_id[ext] += 1
+    fields = [m_id, self._config_id[ext], ext]
     fields.append(self._ftX1_pgm_state_req)
     fields.append(self._ftX1_old_FtTransfer)
     fields.append(self._ftX1_dummy)
-    fields += self._ftX1_motor
-    fields += self._ftX1_uni
-    fields += self._ftX1_cnt
-    fields += self._ftX1_motor_config
+    fields += self._ftX1_motor[4*ext:4*ext+4]
+    fields += self._ftX1_uni[24*ext:24*ext+24]
+    fields += self._ftX1_cnt[8*ext:8*ext+8]
+    fields += self._ftX1_motor_config[16*ext:16*ext+16]
     buf = struct.pack('<Ihh B B 2s BBBB BB2s BB2s BB2s BB2s BB2s BB2s BB2s BB2s B3s B3s B3s B3s 16h', *fields)
     self._socket_lock.acquire()
     res = self._sock.send(buf)
@@ -734,6 +751,10 @@ class ftTXT(object):
       Es wird nur das jeweils neueste Bild aufgehoben.
 
       Nach dem Starten des Cameraprozesses auf dem TXT vergehen bis zu 2 Sekunden, bis des erste Bild vom TXT gesendet wird.
+
+      *Anmerkung:* Falls diese Funktion im Offline-Modus auf dem TXT unter der CFW (Community Firmware Version >0.9) verwendet werden soll,
+      muss zuvor die ftGUI-App auf dem TXT gestartet werden. Im 'direct'-Modus stehen die Camera-Funktionen von ftrobopy nicht zur Verfuegung.
+      In diesem Fall sollte die openCV-Bibliothek oder ftrobopylib.so verwendet werden.
 
       Anwendungsbeispiel:
 
@@ -815,6 +836,10 @@ class ftTXT(object):
       Diese Funktion liefert das aktuelle Camerabild des TXT zurueck (im jpeg-Format).
       Der Camera-Prozess auf dem TXT muss dafuer vorher gestartet worden sein.
 
+      *Anmerkung:* Falls diese Funktion im Offline-Modus auf dem TXT unter der CFW (Community Firmware Version >0.9) verwendet werden soll,
+      muss zuvor die ftGUI-App auf dem TXT gestartet werden. Im 'direct'-Modus stehen die Camera-Funktionen von ftrobopy nicht zur Verfuegung.
+      In diesem Fall sollte die openCV-Bibliothek oder ftrobopylib.so verwendet werden.
+
       Anwendungsbeispiel:
 
       >>>   pic = txt.getCameraFrame()
@@ -840,7 +865,7 @@ class ftTXT(object):
     else:
       return None
 
-  def incrMotorCmdId(self, idx):
+  def incrMotorCmdId(self, idx, ext=C_EXT_MASTER):
     """
       Erhoehung der sog. Motor Command ID um 1.
 
@@ -863,12 +888,13 @@ class ftTXT(object):
       >>> txt.incrMotorCmdId(1)
     """
     self._exchange_data_lock.acquire()
-    self._motor_cmd_id[idx] += 1
-    self._motor_cmd_id[idx] &= 0x07
+    self._motor_cmd_id[4*ext+idx] += 1
+    self._motor_cmd_id[4*ext+idx] &= 0x07
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
-  def getMotorCmdId(self, idx=None):
+  def getMotorCmdId(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die letzte Motor Command ID eines Motorausgangs (oder aller Motorausgaenge als array) zurueck.
 
@@ -883,9 +909,9 @@ class ftTXT(object):
       >>> letzte_cmd_id = txt.getMotorCmdId(4)
     """
     if idx != None:
-      ret=self._motor_cmd_id[idx]
+      ret=self._motor_cmd_id[4*ext+idx]
     else:
-      ret=self._motor_cmd_id
+      ret=self._motor_cmd_id[4*ext:4*ext+4]
     return ret
 
   def cameraOnline(self):
@@ -910,7 +936,7 @@ class ftTXT(object):
     """
     return self._sound
 
-  def incrCounterCmdId(self, idx):
+  def incrCounterCmdId(self, idx, ext=C_EXT_MASTER):
     """
       Erhoehung der Counter Command ID um eins.
       Falls die Counter Command ID eines Counters um eins erhoeht wird, wird der entsprechende Counter zurueck auf 0 gesetzt.
@@ -927,9 +953,10 @@ class ftTXT(object):
       >>> txt.incrCounterCmdId(3)
     """
     self._exchange_data_lock.acquire()
-    self._counter[idx] += 1
-    self._counter[idx] &= 0x07
+    self._counter[4*ext+idx] += 1
+    self._counter[4*ext+idx] &= 0x07
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
   def incrSoundCmdId(self):
@@ -949,6 +976,7 @@ class ftTXT(object):
     self._sound += 1
     self._sound &= 0x0F
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
   def setSoundIndex(self, idx):
@@ -988,6 +1016,7 @@ class ftTXT(object):
           self._sound_data_idx = 0
           self._exchange_data_lock.release()
           self._sound_current_volume = 100
+    self._TransferDataChanged = True
     return None
 
   def getSoundIndex(self):
@@ -1020,6 +1049,7 @@ class ftTXT(object):
     self._exchange_data_lock.acquire()
     self._sound_repeat = rep
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
   def getSoundRepeat(self):
@@ -1088,7 +1118,7 @@ class ftTXT(object):
       print("getSoundVolume() steht nur im 'direct'-Modus zur Verfuegung.")
       return None
 
-  def getCounterCmdId(self, idx=None):
+  def getCounterCmdId(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die letzte Counter Command ID eines (schnellen) Counters zurueck
 
@@ -1101,12 +1131,12 @@ class ftTXT(object):
       >>> num = txt.getCounterCmdId(2)
     """
     if idx != None:
-      ret=self._counter[idx]
+      ret=self._counter[4*ext+idx]
     else:
-      ret=self._counter
+      ret=self._counter[4*ext:4*ext+4]
     return ret
 
-  def setPwm(self, idx, value):
+  def setPwm(self, idx, value, ext=C_EXT_MASTER):
     """
       Einstellen des Ausgangswertes fuer einen Motor- oder Output-Ausgang. Typischerweise wird diese Funktion nicht direkt aufgerufen,
       sondern von abgeleiteten Klassen zum setzen der Ausgangswerte verwendet.
@@ -1129,9 +1159,12 @@ class ftTXT(object):
       >>> txt.setPwm(1,512)
       >>> txt.setPwm(2,256)
     """
+    if value == 1:
+      value = 0
     self._exchange_data_lock.acquire()
-    self._pwm[idx]=value
+    self._pwm[8*ext+idx]=value
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
   def stopAll(self):
@@ -1140,11 +1173,16 @@ class ftTXT(object):
 
     :return:
     """
-    for i in range(8):
+    if self._use_extension:
+      n=16
+    else:
+      n=8
+    for i in range(n):
       self.setPwm(i, 0)
+    self._TransferDataChanged = True
     return
 
-  def getPwm(self, idx=None):
+  def getPwm(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die zuletzt eingestellten Werte der Ausgaenge O1-O8 (als array[8]) oder den Wert eines Ausgangs.
 
@@ -1172,12 +1210,12 @@ class ftTXT(object):
               print("Geschwindigkeit Motor M1: ", M1_b, " (rueckwaerts).")
     """
     if idx != None:
-      ret=self._pwm[idx]
+      ret=self._pwm[8*ext+idx]
     else:
-      ret=self._pwm
+      ret=self._pwm[8*ext:8*ext+8]
     return ret
 
-  def setMotorSyncMaster(self, idx, value):
+  def setMotorSyncMaster(self, idx, value, ext=C_EXT_MASTER):
     """
       Hiermit koennen zwei Motoren miteinander synchronisiert werden, z.B. fuer perfekten Geradeauslauf.
 
@@ -1205,11 +1243,12 @@ class ftTXT(object):
       >>> txt.incrMotorCmdId(1)
     """
     self._exchange_data_lock.acquire()
-    self._motor_sync[idx]=value
+    self._motor_sync[4*ext+idx]=value
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
-  def getMotorSyncMaster(self, idx=None):
+  def getMotorSyncMaster(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die zuletzt eingestellte Konfiguration der Motorsynchronisation fuer einen oder alle Motoren zurueck.
 
@@ -1229,12 +1268,12 @@ class ftTXT(object):
       >>> print("Aktuelle Konfiguration aller Motorsynchronisationen: ", xm)
     """
     if idx != None:
-      ret=self._motor_sync[idx]
+      ret=self._motor_sync[4*ext+idx]
     else:
-      ret=self._motor_sync
+      ret=self._motor_sync[4*ext:ext+4]
     return ret
 
-  def setMotorDistance(self, idx, value):
+  def setMotorDistance(self, idx, value, ext=C_EXT_MASTER):
     """
       Hiermit kann die Distanz (als Anzahl von schnellen Counter-Zaehlungen) fuer einen Motor eingestellt werden.
 
@@ -1256,11 +1295,12 @@ class ftTXT(object):
       >>> txt.incrMotorCmdId(2)
     """
     self._exchange_data_lock.acquire()
-    self._motor_dist[idx]=value
+    self._motor_dist[4*ext+idx]=value
     self._exchange_data_lock.release()
+    self._TransferDataChanged = True
     return None
 
-  def getMotorDistance(self, idx=None):
+  def getMotorDistance(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die zuletzt eingestellte Motordistanz fuer einen oder alle Motorausgaenge zurueck.
 
@@ -1279,12 +1319,12 @@ class ftTXT(object):
       >>> print("Mit setMotorDistance() eingestellte Distanz fuer M2: ", md)
     """
     if idx != None:
-      ret=self._motor_dist[idx]
+      ret=self._motor_dist[4*ext+idx]
     else:
-      ret=self._motor_dist
+      ret=self._motor_dist[4*ext:4*ext+4]
     return ret
 
-  def getCurrentInput(self, idx=None):
+  def getCurrentInput(self, idx=None, ext=C_EXT_MASTER):
     """
        Liefert den aktuellen vom TXT zurueckgelieferten Wert eines Eingangs oder aller Eingaenge als Array
 
@@ -1302,12 +1342,12 @@ class ftTXT(object):
        >>> print("Der aktuelle Wert des Eingangs I4 ist: ", txt.getCurrentInput(3))
     """
     if idx != None:
-      ret=self._current_input[idx]
+      ret=self._current_input[8*ext+idx]
     else:
-      ret=self._current_input
+      ret=self._current_input[8*ext:8*ext+8]
     return ret
 
-  def getCurrentCounterInput(self, idx=None):
+  def getCurrentCounterInput(self, idx=None, ext=C_EXT_MASTER):
     """
       Zeigt an, ob ein Counter oder alle Counter (als Array[4]) sich seit der letzten Abfrage veraendert haben.
 
@@ -1329,12 +1369,12 @@ class ftTXT(object):
       >>>   print("Counter C1 hat sich seit der letzten Abfrage veraendert")
     """
     if idx != None:
-      ret=self._current_counter[idx]
+      ret=self._current_counter[4*ext+idx]
     else:
-      ret=self._current_counter
+      ret=self._current_counter[4*ext:4*ext+4]
     return ret
 
-  def getCurrentCounterValue(self, idx=None):
+  def getCurrentCounterValue(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert den aktuellen Wert eines oder aller schnellen Counter Eingaenge zurueck.
       Damit kann z.B. nachgeschaut werden, wie weit ein Motor schon gefahren ist.
@@ -1353,12 +1393,12 @@ class ftTXT(object):
       >>> print("Aktueller Wert von C1: ", txt.getCurrentCounterValue(0)
     """
     if idx != None:
-      ret=self._current_counter_value[idx]
+      ret=self._current_counter_value[4*ext+idx]
     else:
-      ret=self._current_counter_value
+      ret=self._current_counter_value[4*ext:4*ext+4]
     return ret
 
-  def getCurrentCounterCmdId(self, idx=None):
+  def getCurrentCounterCmdId(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die aktuelle Counter Command ID eines oder aller Counter zurueck.
 
@@ -1377,12 +1417,12 @@ class ftTXT(object):
       >>> print("Aktuelle Counter Command ID von C4: ", cid)
     """
     if idx != None:
-      ret=self._current_counter_cmd_id[idx]
+      ret=self._current_counter_cmd_id[4*ext+idx]
     else:
-      ret=self._current_counter_cmd_id
+      ret=self._current_counter_cmd_id[4*ext:4*ext+4]
     return ret
 
-  def getCurrentMotorCmdId(self, idx=None):
+  def getCurrentMotorCmdId(self, idx=None, ext=C_EXT_MASTER):
     """
       Liefert die aktuelle Motor Command ID eines oder aller Motoren zurueck.
 
@@ -1400,9 +1440,9 @@ class ftTXT(object):
       >>> print("Aktuelle Motor Command ID von M4: ", txt.getCurrentMotorCmdId(3))
     """
     if idx != None:
-      ret=self._current_motor_cmd_id[idx]
+      ret=self._current_motor_cmd_id[4*ext+idx]
     else:
-      ret=self._current_motor_cmd_id
+      ret=self._current_motor_cmd_id[4*ext:4*ext+4]
     return ret
 
   def getCurrentSoundCmdId(self):
@@ -1603,6 +1643,219 @@ class ftTXTKeepConnection(threading.Thread):
         return
     return
 
+class CRC32(object):
+  def __init__(self):
+    #print("CRC32.__init__()")
+    self.Reset()
+    self.m_table = [0 for i in range(256)]
+    for dividend in range(256):
+      #remainder = (dividend << 24) & 0xffffffff
+      remainder = dividend << 24
+      for bit in range(8,0,-1):
+        if remainder & 0x80000000:
+          remainder = (remainder << 1) ^ 0x04C11DB7
+        else:
+          remainder = (remainder << 1)
+        #remainder &= 0xffffffff
+      self.m_table[dividend] = remainder & 0xffffffff
+    #print("CRC32.m_table initialized")
+    return
+
+  def Reset(self):
+    self.m_crc = 0xffffffff
+    self.c = 0
+    return
+
+  def Add16bit(self, val):
+    self.c += 1
+    val &= 0xffff
+    data = (self.m_crc >> 24) ^ (val >> 8)
+    data &= 0xff
+    #print(self.c, " val=", val, " data1=", data)
+    #print("1. data list index in CRC32.Add16bit =", data, " m_table[data]=", self.m_table[data])
+    self.m_crc = (self.m_crc << 8) ^ self.m_table[data]
+    self.m_crc &= 0xffffffff
+    #print("m_crc=", self.m_crc)
+    data = (self.m_crc >> 24) ^ (val & 0xff)
+    data &= 0xff
+    #print("2. data list index in CRC32.Add16bit =", data, " m_table[data]=", self.m_table[data])
+    self.m_crc = ((self.m_crc << 8) & 0xffffffff) ^ self.m_table[data]
+    self.m_crc &= 0xffffffff
+    #print("m_crc=", self.m_crc)
+    return
+
+class compBuffer(object):
+  def __init__(self):
+    self.m_crc = CRC32()
+    self.Reset()
+    return
+
+  def Reset(self):
+    self.Rewind()
+    self.m_compressed               = []
+    self.m_nochange_count           = 0
+    return
+
+  def Rewind(self):
+    self.m_bitbuffer                = 0
+    self.m_bitcount                 = 0
+    self.m_nochange_count           = 0
+    #self.m_previous_words           = [0]
+    self.m_previous_word            = 0
+    self.m_crc.Reset()
+    return
+
+  def GetBits(self, count):
+    # byte      |2 2 2 2 2 2 2 2|1 1 1 1 1 1 1 1|
+    # fragment  |7 7|6 6|5 5|4 4 4 4|3 3|2 2|1 1|
+    while(self.m_bitcount<count):
+      cp = self.m_compressed[0]
+      if isinstance(cp, str):
+        self.m_bitbuffer |= ord(cp) << self.m_bitcount
+      else:
+        self.m_bitbuffer |= cp << self.m_bitcount
+      self.m_compressed = self.m_compressed[1:]
+      self.m_bitcount += 8
+    res = self.m_bitbuffer & (0xffffffff >> (32-count) )
+    self.m_bitbuffer >>= count
+    self.m_bitcount -= count
+    #print("m_bitcount=", self.m_bitcount, " m_bitbuffer=",format(self.m_bitbuffer, '016b'), " m_compressed=",' '.join(format(ord(x),'08b') for x in self.m_compressed))
+    return res
+
+  def GetWord(self):
+    word = 0
+    if self.m_nochange_count > 0:
+      self.m_nochange_count -= 1
+      #word = self.m_previous_words[-1]
+      word = self.m_previous_word
+    else:
+      head = self.GetBits(2)
+      #print("head = ", head)
+      if head == 0:
+        # 00 NoChange 1x16 bit
+        #word = self.m_previous_words[-1]
+        word = self.m_previous_word
+      elif head == 1:
+        # 01 00 NoChange 2x16 bit
+        # 01 01 NoChange 3x16 bit
+        # 01 10 NoChange 4x16 bit
+        # 01 11 xxxx NoChange 5..19x16 bit
+        # 01 11 1111 xxxxxxxx NoChange 20..274 x16 bit
+        # 01 11 1111 11111111 xxxxxxxx-xxxxxxxx NoChange 275... x16 bit
+        #word = self.m_previous_words[-1]
+        word = self.m_previous_word
+        count = self.GetBits(2)
+        if count<3:
+          self.m_nochange_count = count+2-1
+        else:
+          count = self.GetBits(4)
+          if count<15:
+            self.m_nochange_count = count+5-1
+          else:
+            count = self.GetBits(8)
+            if count<255:
+              self.m_nochange_count = count+20-1
+            else:
+              count = self.GetBits(16)
+              self.m_nochange_count = count+275-1
+      elif head == 2:
+        #if self.m_previous_words[-1] > 0:
+        if self.m_previous_word > 0:
+          word = 0
+        else:
+          word = 1
+      elif head == 3: # head == 3:
+        word = self.GetBits(16)
+    #self.m_previous_words.append(word)
+    self.m_previous_word=0
+    #self.m_crc.Add16bit(word)
+    return(word)
+  
+  def PushBits(self, count, bits):
+    self.m_bitbuffer |= (bits << self.m_bitcount)
+    self.m_bitbuffer &= 0xffffffff
+    self.m_bitcount += count
+    while (self.m_bitcount >=8):
+      self.m_bitcount -= 8
+      self.m_compressed.append(self.m_bitbuffer & 0xff)
+      self.m_bitbuffer >>= 8
+    #print("m_bitcount=", self.m_bitcount, " m_bitbuffer=",format(self.m_bitbuffer, '016b'), " m_compressed=",' '.join(format(ord(x),'08b') for x in self.m_compressed))
+    return
+  
+  def EncodeNoChangeCount(self):
+    # 00 NoChange 1x16 bit
+    # 01 00 NoChange 2x16 bit
+    # 01 01 NoChange 3x16 bit
+    # 01 10 NoChange 4x16 bit
+    # 01 11 xxxx NoChange 5..19x16 bit
+    # 01 11 1111 xxxxxxxx NoChange 20..274 x16 bit
+    # 01 11 1111 11111111 xxxxxxxx-xxxxxxxx NoChange 275... bit
+    while(self.m_nochange_count>0):
+      if (self.m_nochange_count==1):
+        self.PushBits(2,0)
+        break
+      elif (self.m_nochange_count<=4):
+        self.PushBits(2,1)
+        self.PushBits(2,self.m_nochange_count-2)
+        break
+      elif (self.m_nochange_count<=4+15):
+        self.PushBits(2,1)
+        self.PushBits(2,3)
+        self.PushBits(4,self.m_nochange_count-4-1)
+        break
+      elif (self.m_nochange_count<=4+15+255):
+        self.PushBits(2,1)
+        self.PushBits(2,3)
+        self.PushBits(4,15)
+        self.PushBits(8,self.m_nochange_count-4-15-1)
+        break
+      elif (self.m_nochange_count<=4+15+255+4096):
+        self.PushBits(2,1)
+        self.PushBits(2,3)
+        self.PushBits(4,15)
+        self.PushBits(8,255)
+        self.PushBits(16,self.m_nochange_count-4-15-255-1)
+        break
+      else:
+        self.PushBits(2,1)
+        self.PushBits(2,3)
+        self.PushBits(4,15)
+        self.PushBits(8,255)
+        self.PushBits(16,4095)
+        self.m_nochange_count += -4-15-255-4096
+    self.m_nochange_count = 0
+    return
+  
+  def AddWord(self, word, word_for_crc=None):
+    if word_for_crc==None:
+      self.m_crc.Add16bit(word)
+    else:
+      self.m_crc.Add16bit(word_for_crc)
+
+    #if word == self.m_previous_words[-1]:
+    if word == self.m_previous_word:
+      self.m_nochange_count += 1
+    else:
+      self.EncodeNoChangeCount()
+      #if (word == 1 and self.m_previous_words[-1] == 0) or (word == 0 and self.m_previous_words[-1] != 0):
+      if (word == 1 and self.m_previous_word == 0) or (word == 0 and self.m_previous_word != 0):
+        # 10 Toggle (0 to 1, everything else to 0)
+        self.PushBits(2,2)
+      else:
+        # 11 16 bit follow immediately
+        self.PushBits(2,3)
+        self.PushBits(16,word)
+    #self.m_previous_words.append(word)
+    self.m_previous_word = 0
+
+  def Finish(self):
+    self.EncodeNoChangeCount()
+    if self.m_bitcount > 0:
+      self.PushBits(8-self.m_bitcount,0)
+
+  def GetCompBuffer(self):
+    return self.m_compressed
+
 class ftTXTexchange(threading.Thread):
   """
   Thread zum kontinuierlichen Datenaustausch zwischen TXT und einem Computer, bzw. zwischen 
@@ -1617,6 +1870,15 @@ class ftTXTexchange(threading.Thread):
     self._txt_sleep_between_updates = sleep_between_updates
     self._txt_stop_event            = stop_event
     self._txt_interval_timer        = time.time()
+    if (self._txt._use_extension):
+      self.compBuffer = compBuffer()
+    self._crc0 = 809550095
+    self._cmpbuf0 = [253,34] #'\xfd"' # chr(253),chr(34)
+    self._previous_uncbuf = [0 for i in range(54)]
+    self._previous_response = [0 for i in range(84)]
+    self._previous_crc = self._crc0
+    self._recv_crc0 = 0x628ebb05
+    self._previous_recv_crc = self._recv_crc0
     return
   
   def run(self):
@@ -1631,8 +1893,8 @@ class ftTXTexchange(threading.Thread):
 
         self._txt._exchange_data_lock.acquire()
 
-        if self._txt._config_id != self._txt._config_id_old:
-          self._txt._config_id_old = self._txt._config_id
+        if self._txt._config_id[0] != self._txt._config_id_old:
+          self._txt._config_id_old = self._txt._config_id[0]
           #
           # at first, transfer i/o config data from TXT to motor shield
           # (this is only necessary, if config data has been changed, e.g. the config_id number has been increased)
@@ -1971,49 +2233,202 @@ class ftTXTexchange(threading.Thread):
        try:
         if (self._txt_sleep_between_updates > 0):
           time.sleep(self._txt_sleep_between_updates)
-        exchange_ok = False
-        m_id          = 0xCC3597BA
-        m_resp_id     = 0x4EEFAC41
-        self._txt._exchange_data_lock.acquire()
-        fields  = [m_id]
-        fields += self._txt._pwm
-        fields += self._txt._motor_sync
-        fields += self._txt._motor_dist
-        fields += self._txt._motor_cmd_id
-        fields += self._txt._counter
-        fields += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat,0,0]
-        self._txt._exchange_data_lock.release()
-        buf = struct.pack('<I8h4h4h4h4hHHHbb', *fields)
-        self._txt._socket_lock.acquire()
-        res = self._txt._sock.send(buf)
-        data = self._txt._sock.recv(512)
-        self._txt._update_timer = time.time()
-        self._txt._socket_lock.release()
-        fstr    = '<I8h4h4h4h4hH4bB4bB4bB4bB4bBb'
-        response_id = 0
-        if len(data) == struct.calcsize(fstr):
-          response = struct.unpack(fstr, data)
+
+        if self._txt._use_extension:
+          #start_time=time.time()
+          m_id          = 0xFBC56F98
+          m_resp_id     = 0x6F3B54E6
+          m_extrasize   = 0
+          self._txt._exchange_data_lock.acquire()
+          fields  = [m_id] # commad id
+          fields += [m_extrasize] # will be calculated below
+          fields += [0]      # CRC, set below
+          fields += [1]      # number of active extensions
+          fields += [0]      # 16 bit dummy align
+          fstr = '<IIIHH'
+          self._txt._exchange_data_lock.release()
+          if self._txt._TransferDataChanged:
+            uncbuf = []
+            # add MASTER fields
+            self._txt._exchange_data_lock.acquire()
+            uncbuf += self._txt._pwm[:8]
+            uncbuf += self._txt._motor_sync[:4]
+            uncbuf += self._txt._motor_dist[:4]
+            uncbuf += self._txt._motor_cmd_id[:4]
+            uncbuf += self._txt._counter[:4]
+            uncbuf += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat]
+            # add SLAVE flieds
+            uncbuf += self._txt._pwm[8:]
+            uncbuf += self._txt._motor_sync[4:]
+            uncbuf += self._txt._motor_dist[4:]
+            uncbuf += self._txt._motor_cmd_id[4:]
+            uncbuf += self._txt._counter[4:]
+            # for now use same sound as for MASTER
+            uncbuf += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat]
+            self._txt._exchange_data_lock.release()
+            # compress buffer
+            self.compBuffer.Reset()
+            for i in range(len(uncbuf)):
+              if uncbuf[i] == self._previous_uncbuf[i]:
+                self.compBuffer.AddWord(0, word_for_crc=uncbuf[i])
+              else:
+                if uncbuf[i] == 0:
+                  self.compBuffer.AddWord(1, word_for_crc=0)
+                else:
+                  self.compBuffer.AddWord(uncbuf[i])
+            self.compBuffer.Finish()
+            self._previous_uncbuf = uncbuf[:]
+            crc = self.compBuffer.m_crc.m_crc & 0xffffffff
+            cmpbuf = self.compBuffer.m_compressed
+            self._txt._TransferDataChanged = False
+            self._previous_crc = crc
+          else:
+            crc = self._previous_crc
+            cmpbuf = self._cmpbuf0
+          
+          m_extrasize = len(cmpbuf)
+          #if isinstance(cmpbuf, bytes):
+          #  fields.append(cmpbuf)
+          #else:
+          #  fields.append(bytearray(cmpbuf,'utf-8'))
+          
+          fields += cmpbuf
+          
+          fstr   += str(m_extrasize)+'B'
+          #fields += [0] # dummy byte UINT8
+          #fstr   += 'B'
+          fields[1] = m_extrasize
+          fields[2] = crc
+          #print("fields=", fields)
+          #print("crc=",hex(crc)," : ", format((crc >>24) & 255, '3d'), format((crc >>16) & 255, '3d'), format((crc >>8) & 255, '3d'), format(crc & 255, '3d'), "  cmpbuf=", ' '.join(format(x,'3d') for x in cmpbuf) )
+
+          buf = struct.pack(fstr, *fields)
+          #print("buf=",' '.join(format(x, '02x') for x in buf))
+          self._txt._socket_lock.acquire()
+          res = self._txt._sock.send(buf)
+          
+          retbuf = self._txt._sock.recv(512)
+          self._txt._update_timer = time.time()
+          self._txt._socket_lock.release()
+
+          if len(retbuf) == 0:
+            print('ERROR: no data received in ftTXTexchange thread during exchange data compressed, possibly due to network error or CRC failure')
+            print('Connection to TXT aborted')
+            self._txt_stop_event.set()
+            return
+          #print("retbuf=",','.join(format(ord(x),'4d') for x in retbuf))
+          # head of response is uncompressed
+          resphead    = struct.unpack('<IIIHH', retbuf[:16])
+          response_id = resphead[0]
+          extra_size  = resphead[1] # size of compressed data
+          m_crc       = resphead[2] # CRC32 checksum of compressed data
+          nr_ext      = resphead[3] # number of active extensions
+          dmy_align   = resphead[4] # dummy align
+          if response_id != m_resp_id:
+            print('ResponseID ', hex(response_id),' of exchangeData command in exchange thread does not match')
+            print('Connection to TXT aborted')
+            self._txt_stop_event.set()
+            return
+          if self._previous_recv_crc != m_crc:
+            # uncompress body of response
+            self._previous_recv_crc = m_crc
+            self.compBuffer.Reset()
+            self.compBuffer.m_compressed=retbuf[16:]
+            response=[response_id]
+            #print("unpacked:",response[1:])
+            self._txt._exchange_data_lock.acquire()
+            for i in range(80):
+              d = self.compBuffer.GetWord()
+              if d != 0:
+                if (d == 1) and (self._previous_response[i+1] != 0):
+                  d = 0
+                # MASTER
+                if   i<8:
+                  self._txt._current_input[i] = d
+                elif i<12:
+                  self._txt._current_counter[i-8] = d
+                elif i<16:
+                  self._txt._current_counter_value[i-12] = d
+                elif i<20:
+                  self._txt._current_counter_cmd_id[i-16] = d
+                elif i<24:
+                  self._txt._current_motor_cmd_id[i-20] = d
+                elif i<25:
+                  self._txt._current_sound_cmd_id = d
+                elif i<52:
+                  self._txt._current_ir[i-25] = d
+                # EXTENSION
+                elif i<60:
+                  print(i,d)
+                  self._txt._current_input[i-44] = d
+                elif i<64:
+                  self._txt._current_counter[i-56] = d
+                elif i<68:
+                  self._txt._current_counter_value[i-60] = d
+                elif i<72:
+                  self._txt._current_counter_cmd_id[i-64] = d
+                elif i<76:
+                  self._txt._current_motor_cmd_id[i-68] = d
+                elif i<77:
+                  pass
+                  # TODO: extra sound_cmd_id for extension
+                  #self._txt._current_sound_cmd_id = d
+                else:
+                  pass # extension does not provide ir input data
+                  
+              response.append(d)
+              
+            self._previous_response = response[:]
+              
+            self._txt.handle_data(self._txt)
+            self._txt._exchange_data_lock.release()
+            #end_time=time.time()
+            #print("time=",end_time-start_time)
+
         else:
-          print('Received data size (', len(data),') does not match length of format string (',struct.calcsize(fstr),')')
-          print('Connection to TXT aborted')
-          self._txt_stop_event.set()
-          return
-        response_id = response[0]
-        if response_id != m_resp_id:
-          print('ResponseID ', hex(response_id),' of exchangeData command in exchange thread does not match')
-          print('Connection to TXT aborted')
-          self._txt_stop_event.set()
-          return
-        self._txt._exchange_data_lock.acquire()
-        self._txt._current_input          = response[1:9]
-        self._txt._current_counter        = response[9:13]
-        self._txt._current_counter_value  = response[13:17]
-        self._txt._current_counter_cmd_id = response[17:21]
-        self._txt._current_motor_cmd_id   = response[21:25]
-        self._txt._current_sound_cmd_id   = response[25]
-        self._txt._current_ir             = response[26:52]
-        self._txt.handle_data(self._txt)
-        self._txt._exchange_data_lock.release()
+          m_id          = 0xCC3597BA
+          m_resp_id     = 0x4EEFAC41
+          self._txt._exchange_data_lock.acquire()
+          fields  = [m_id]
+          fields += self._txt._pwm[:8]
+          fields += self._txt._motor_sync[:4]
+          fields += self._txt._motor_dist[:4]
+          fields += self._txt._motor_cmd_id[:4]
+          fields += self._txt._counter[:4]
+          fields += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat,0,0]
+          self._txt._exchange_data_lock.release()
+          buf = struct.pack('<I8h4h4h4h4hHHHbb', *fields)
+          self._txt._socket_lock.acquire()
+          res = self._txt._sock.send(buf)
+          data = self._txt._sock.recv(512)
+          self._txt._update_timer = time.time()
+          self._txt._socket_lock.release()
+          fstr    = '<I8h4h4h4h4hH4bB4bB4bB4bB4bBb'
+          response_id = 0
+          if len(data) == struct.calcsize(fstr):
+            response = struct.unpack(fstr, data)
+          else:
+            print('Received data size (', len(data),') does not match length of format string (',struct.calcsize(fstr),')')
+            print('Connection to TXT aborted')
+            self._txt_stop_event.set()
+            return
+          response_id = response[0]
+          if response_id != m_resp_id:
+            print('ResponseID ', hex(response_id),' of exchangeData command in exchange thread does not match')
+            print('Connection to TXT aborted')
+            self._txt_stop_event.set()
+            return
+          self._txt._exchange_data_lock.acquire()
+          self._txt._current_input[:8]          = response[1:9]
+          self._txt._current_counter[:4]        = response[9:13]
+          self._txt._current_counter_value[:4]  = response[13:17]
+          self._txt._current_counter_cmd_id[:4] = response[17:21]
+          self._txt._current_motor_cmd_id[:4]   = response[21:25]
+          self._txt._current_sound_cmd_id   = response[25]
+          self._txt._current_ir             = response[26:52]
+          self._txt.handle_data(self._txt)
+          self._txt._exchange_data_lock.release()
+      
        except Exception as err:
         self._txt_stop_event.set()
         print('Network error ',err)
@@ -2203,7 +2618,7 @@ class ftrobopy(ftTXT):
     * **sound_finished**
     
   """
-  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01, special_connection='127.0.0.1'):
+  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01, special_connection='127.0.0.1', use_extension=False):
 
     """
       Initialisierung der ftrobopy Klasse:
@@ -2287,7 +2702,6 @@ class ftrobopy(ftTXT):
           else:
             print("Error: could not auto detect TXT connection. Please specify host and port manually !")
             return
-          
     if host[:6] == 'direct':
       # check if running on FT-txt
       if str.find(socket.gethostname(), 'FT-txt') < 0 and str.find(socket.gethostname(), 'ft-txt') < 0:
@@ -2310,17 +2724,23 @@ class ftrobopy(ftTXT):
           return
       ftTXT.__init__(self, directmode=True)
     else:
-      ftTXT.__init__(self, host, port)
+      ftTXT.__init__(self, host, port, use_extension=use_extension)
     self._txt_is_initialzed = True
     self.queryStatus()
     if self.getVersionNumber() < 0x4010500:
       print('ftrobopy needs at least firmwareversion ',hex(0x4010500), '.')
       sys.exit()
     print('Connected to ', self.getDevicename(), self.getFirmwareVersion())
-    for i in range(8):
+    if use_extension:
+      n = 16
+    else:
+      n = 8
+    for i in range(n):
       self.setPwm(i,0)
     self.startOnline(update_interval)
-    self.updateConfig()
+    self.updateConfig(ftTXT.C_EXT_MASTER)
+    if (use_extension):
+      self.updateConfig(ftTXT.C_EXT_SLAVE)
 
   def __del__(self):
     if self._txt_is_initialized:
@@ -2331,7 +2751,7 @@ class ftrobopy(ftTXT):
       if self._ser_ms:
         self._ser_ms.close()
 
-  def motor(self, output, wait=True):
+  def motor(self, output, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein Motor-Objekt, das zur Ansteuerung eines Motors verwendet wird,
       der an einem der Motorausgaenge M1-M4 des TXT angeschlossen ist. Falls auch die schnellen
@@ -2434,9 +2854,10 @@ class ftrobopy(ftTXT):
       >>> Motor1.stop()
     """
     class mot(object):
-      def __init__(self, outer, output):
+      def __init__(self, outer, output, ext):
         self._outer=outer
         self._output=output
+        self._ext=ext
         self._speed=0
         self._distance=0
         self._outer._exchange_data_lock.acquire()
@@ -2447,54 +2868,54 @@ class ftrobopy(ftTXT):
         self._outer._exchange_data_lock.acquire()
         self._speed=speed
         if speed > 0:
-         self._outer.setPwm((self._output-1)*2, self._speed)
-         self._outer.setPwm((self._output-1)*2+1, 0)
+         self._outer.setPwm((self._output-1)*2, self._speed, self._ext)
+         self._outer.setPwm((self._output-1)*2+1, 0, self._ext)
         else:
-          self._outer.setPwm((self._output-1)*2, 0)
-          self._outer.setPwm((self._output-1)*2+1, -self._speed)
+          self._outer.setPwm((self._output-1)*2, 0, self._ext)
+          self._outer.setPwm((self._output-1)*2+1, -self._speed, self._ext)
         self._outer._exchange_data_lock.release()
       def setDistance(self, distance, syncto=None):
         self._outer._exchange_data_lock.acquire()
         if syncto:
           self._distance     = distance
           syncto._distance   = distance
-          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1)
-          syncto._command_id = syncto._outer.getCurrentMotorCmdId(self._output-1)
-          self._outer.setMotorDistance(self._output-1, distance)
-          self._outer.setMotorDistance(syncto._output-1, distance)
-          self._outer.setMotorSyncMaster(self._output-1, syncto._output)
-          self._outer.setMotorSyncMaster(syncto._output-1, self._output)
-          self._outer.incrMotorCmdId(self._output-1)
-          self._outer.incrMotorCmdId(syncto._output-1)
+          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1, self._ext)
+          syncto._command_id = syncto._outer.getCurrentMotorCmdId(self._output-1, self._ext)
+          self._outer.setMotorDistance(self._output-1, distance, self._ext)
+          self._outer.setMotorDistance(syncto._output-1, distance, self._ext)
+          self._outer.setMotorSyncMaster(self._output-1, 4*self._ext + syncto._output, self._ext)
+          self._outer.setMotorSyncMaster(syncto._output-1, 4*self._ext + self._output, self._ext)
+          self._outer.incrMotorCmdId(self._output-1, self._ext)
+          self._outer.incrMotorCmdId(syncto._output-1, self._ext)
         else:
           self._distance     = distance
-          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1)
-          self._outer.setMotorDistance(self._output-1, distance)
-          self._outer.setMotorSyncMaster(self._output-1, 0)
-          self._outer.incrMotorCmdId(self._output-1)
+          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1, self._ext)
+          self._outer.setMotorDistance(self._output-1, distance, self._ext)
+          self._outer.setMotorSyncMaster(self._output-1, 0, self._ext)
+          self._outer.incrMotorCmdId(self._output-1, self._ext)
         self._outer._exchange_data_lock.release()
       def finished(self):
-        if self._outer.getMotorCmdId(self._output-1) == self._outer.getCurrentMotorCmdId(self._output-1):
+        if self._outer.getMotorCmdId(self._output-1, self._ext) == self._outer.getCurrentMotorCmdId(self._output-1, self._ext):
           return True
         else:
           return False
       def getCurrentDistance(self):
-        return self._outer.getCurrentCounterValue(idx=self._output-1)
+        return self._outer.getCurrentCounterValue(idx=self._output-1, ext=self._ext)
       def stop(self):
         self._outer._exchange_data_lock.acquire()
         self.setSpeed(0)
         self.setDistance(0)
         self._outer._exchange_data_lock.release()
     
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     M[output-1] = ftTXT.C_MOTOR
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return mot(self, output)
+    return mot(self, output, ext)
 
-  def output(self, num, level=0, wait=True):
+  def output(self, num, level=0, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein allgemeines Output-Objekt, das zur Ansteuerung von Elementen verwendet
       wird, die an den Ausgaengen O1-O8 angeschlossen sind.
@@ -2520,25 +2941,27 @@ class ftrobopy(ftTXT):
       >>> Lampe.setLevel(512)
     """
     class out(object):
-      def __init__(self, outer, num, level):
+      def __init__(self, outer, num, level, ext):
         self._outer=outer
         self._num=num
         self._level=level
+        self._ext=ext
+        self.setLevel(level)
       def setLevel(self, level):
         self._level=level
         self._outer._exchange_data_lock.acquire()
-        self._outer.setPwm(num-1, self._level)
+        self._outer.setPwm(num-1, self._level, self._ext)
         self._outer._exchange_data_lock.release()
     
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     M[int((num-1)/2)] = ftTXT.C_OUTPUT
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return out(self, num, level)
+    return out(self, num, level, ext)
 
-  def input(self, num, wait=True):
+  def input(self, num, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein digitales (Ein/Aus) Input-Objekt, an einem der Eingaenge I1-I8.  Dies kann z.B. ein Taster, ein Photo-Transistor oder auch ein Reed-Kontakt sein.
       
@@ -2564,21 +2987,22 @@ class ftrobopy(ftTXT):
             print("Der Taster an Eingang I5 wurde gedrueckt.")
     """
     class inp(object):
-      def __init__(self, outer, num):
+      def __init__(self, outer, num, ext):
         self._outer=outer
         self._num=num
+        self._ext=ext
       def state(self):
-        return self._outer.getCurrentInput(num-1)
+        return self._outer.getCurrentInput(num-1, self._ext)
 
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return inp(self, num)
+    return inp(self, num, ext)
 
-  def resistor(self, num, wait=True):
+  def resistor(self, num, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage eines Widerstandes, der an einem der Eingaenge I1-I8 angeschlossenen ist. Dies kann z.B. ein temperaturabhaengiger Widerstand (NTC-Widerstand) oder auch ein Photowiderstand sein.
 
@@ -2614,11 +3038,12 @@ class ftrobopy(ftTXT):
       >>> print("Die Temperatur des fischertechnik NTC-Widerstands betraegt ", R.ntcTemperature())
     """
     class inp(object):
-      def __init__(self, outer, num):
+      def __init__(self, outer, num, ext):
         self._outer=outer
         self._num=num
+        self._ext=ext
       def value(self):
-        return self._outer.getCurrentInput(num-1)
+        return self._outer.getCurrentInput(num-1, self._ext)
       def ntcTemperature(self):
         r = self.value()
         if r != 0:
@@ -2630,15 +3055,15 @@ class ftrobopy(ftTXT):
           T = 10000
         return T
 
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return inp(self, num)
+    return inp(self, num, ext)
 
-  def ultrasonic(self, num, wait=True):
+  def ultrasonic(self, num, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein Objekt zur Abfrage eines an einem der Eingaenge I1-I8 angeschlossenen
       TX/TXT-Ultraschall-Distanzmessers.
@@ -2664,21 +3089,22 @@ class ftrobopy(ftTXT):
       >>> print("Der Abstand zur Wand betraegt ", ultraschall.distance(), " cm.")
     """
     class inp(object):
-      def __init__(self, outer, num):
+      def __init__(self, outer, num, ext):
         self._outer=outer
         self._num=num
+        self._ext=ext
       def distance(self):
-        return self._outer.getCurrentInput(num-1)
+        return self._outer.getCurrentInput(num-1, self._ext)
     
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return inp(self, num)
+    return inp(self, num, ext)
   
-  def voltage(self, num, wait=True):
+  def voltage(self, num, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des Spannungspegels, der an einem der Eingaenge I1-I8 angeschlossenen ist. Damit kann z.B. auch der Ladezustand des Akkus ueberwacht werden. Der fischertechnik Farbsensor kann auch mit diesem Objekt abgefragt werden.
       
@@ -2703,21 +3129,22 @@ class ftrobopy(ftTXT):
       >>> print("Die Spannung betraegt ", batterie.voltage(), " mV")
       """
     class inp(object):
-      def __init__(self, outer, num):
+      def __init__(self, outer, num, ext):
         self._outer=outer
         self._num=num
+        self._ext=ext
       def voltage(self):
-        return self._outer.getCurrentInput(num-1)
+        return self._outer.getCurrentInput(num-1, self._ext)
     
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return inp(self, num)
+    return inp(self, num, ext)
 
-  def colorsensor(self, num, wait=True):
+  def colorsensor(self, num, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein analoges Input-Objekt zur Abfrage des fischertechnik Farbsensors.
       Beim Farbsensor handelt es sich um einen Fototransistor, der das von einer Oberflaeche
@@ -2754,13 +3181,14 @@ class ftrobopy(ftTXT):
       >>> print("Die erkannte Farbe ist: ", farbsensor.color())
       """
     class inp(object):
-      def __init__(self, outer, num):
+      def __init__(self, outer, num, ext):
         self._outer=outer
         self._num=num
+        self._ext=ext
       def value(self):
-        return self._outer.getCurrentInput(num-1)
+        return self._outer.getCurrentInput(num-1, self._ext)
       def color(self):
-        c = self._outer.getCurrentInput(num-1)
+        c = self._outer.getCurrentInput(num-1, self._ext)
         if c < 200:
           return 'weiss'
         elif c < 1000:
@@ -2768,15 +3196,15 @@ class ftrobopy(ftTXT):
         else:
           return 'blau'
     
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return inp(self, num)
+    return inp(self, num, ext)
 
-  def trailfollower(self, num, wait=True):
+  def trailfollower(self, num, ext=ftTXT.C_EXT_MASTER, wait=True):
     """
       Diese Funktion erzeugt ein digitales Input-Objekt zur Abfrage eines Spursensors, der an einem der Eingaenge I1-I8 angeschlossenen ist.
       (Intern ist diese Funktion identisch zur voltage()-Funktion und misst die anliegende Spannung in mV).
@@ -2804,25 +3232,26 @@ class ftrobopy(ftTXT):
       >>> print("Der Wert des Spursensors ist ", L.state())
     """
     class inp(object):
-      def __init__(self, outer, num):
+      def __init__(self, outer, num, ext):
         self._outer=outer
         self._num=num
+        self._ext=ext
       def state(self):
-        if self._outer.getCurrentInput(num-1) == 1: # in direct-mode digital 1 is set by motor-shield if voltage is > 600mV
+        if self._outer.getCurrentInput(num-1, self._ext) == 1: # in direct-mode digital 1 is set by motor-shield if voltage is > 600mV
          return 1
         else:
-          if self._outer.getCurrentInput(num-1) > 600: # threshold in mV between digital 0 and 1. Use voltage()-Function instead, if analog value of trailfollower is needed.
+          if self._outer.getCurrentInput(num-1, self._ext) > 600: # threshold in mV between digital 0 and 1. Use voltage()-Function instead, if analog value of trailfollower is needed.
             return 1
           else:
             return 0
     
-    M, I = self.getConfig()
+    M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_DIGITAL)
-    self.setConfig(M, I)
-    self.updateConfig()
+    self.setConfig(M, I, ext)
+    self.updateConfig(ext)
     if wait:
       self.updateWait()
-    return inp(self, num)
+    return inp(self, num, ext)
   
   def joystick(self, joynum, remote_number=0, remote_type=0):
     """
