@@ -20,7 +20,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.91"
+__version__     = "1.92"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
@@ -256,15 +256,15 @@ class ftTXT(object):
     self._motor_dist   = [0,0,0,0,0,0,0,0]
     self._motor_cmd_id = [0,0,0,0,0,0,0,0]
     self._counter      = [0,0,0,0,0,0,0,0]
-    self._sound        = 0
-    self._sound_index  = 0
-    self._sound_repeat = 0
+    self._sound        = [0,0]
+    self._sound_index  = [0,0]
+    self._sound_repeat = [0,0]
     self._current_input           = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
     self._current_counter         = [0,0,0,0,0,0,0,0]
     self._current_counter_value   = [0,0,0,0,0,0,0,0]
     self._current_counter_cmd_id  = [0,0,0,0,0,0,0,0]
     self._current_motor_cmd_id    = [0,0,0,0,0,0,0,0]
-    self._current_sound_cmd_id    = 0
+    self._current_sound_cmd_id    = [0,0]
     self._current_ir              = [0 for i in range(26)]
     self._ir_current_ljoy_left_right = [0,0,0,0,0] # -15 ... 15
     self._ir_current_ljoy_up_down    = [0,0,0,0,0] # -15 ... 15
@@ -923,7 +923,7 @@ class ftTXT(object):
     """
     return self._camera_online
 
-  def getSoundCmdId(self):
+  def getSoundCmdId(self, ext=C_EXT_MASTER):
     """
       Liefert die letzte Sound Command ID zurueck.
 
@@ -934,7 +934,7 @@ class ftTXT(object):
 
       >>> last_sound_cmd_id = txt.getSoundCmdId()
     """
-    return self._sound
+    return self._sound[ext]
 
   def incrCounterCmdId(self, idx, ext=C_EXT_MASTER):
     """
@@ -959,7 +959,7 @@ class ftTXT(object):
     self._TransferDataChanged = True
     return None
 
-  def incrSoundCmdId(self):
+  def incrSoundCmdId(self, ext=C_EXT_MASTER):
     """
       Erhoehung der Sound Command ID um eins.
       Die Sound Command ID muss immer dann um eins erhoeht werden, falls ein neuer Sound gespielt werden soll oder
@@ -973,13 +973,13 @@ class ftTXT(object):
       >>> txt.incrSoundCmdId()
     """
     self._exchange_data_lock.acquire()
-    self._sound += 1
-    self._sound &= 0x0F
+    self._sound[ext] += 1
+    self._sound[ext] &= 0x0F
     self._exchange_data_lock.release()
     self._TransferDataChanged = True
     return None
 
-  def setSoundIndex(self, idx):
+  def setSoundIndex(self, idx, ext=C_EXT_MASTER):
     """
       Einstellen eines neuen Sounds.
 
@@ -997,7 +997,7 @@ class ftTXT(object):
       >>> txt.incrSoundCmdId()
     """
     self._exchange_data_lock.acquire()
-    self._sound_index = idx
+    self._sound_index[ext] = idx
     self._exchange_data_lock.release()
     if self._directmode and self._spi:
       self._exchange_data_lock.acquire()
@@ -1019,7 +1019,7 @@ class ftTXT(object):
     self._TransferDataChanged = True
     return None
 
-  def getSoundIndex(self):
+  def getSoundIndex(self, ext=C_EXT_MASTER):
     """
       Liefert die Nummer des aktuell eingestellten Sounds zurueck.
 
@@ -1030,9 +1030,9 @@ class ftTXT(object):
 
       >>> aktueller_sound = txt.getSoundIndex()
     """
-    return self._sound_index
+    return self._sound_index[ext]
 
-  def setSoundRepeat(self, rep):
+  def setSoundRepeat(self, rep, ext=C_EXT_MASTER):
     """
       Einstellen der Anzahl der Wiederholungen eines Sounds.
 
@@ -1047,12 +1047,12 @@ class ftTXT(object):
       >>> txt.setSoundRepeat(0)
     """
     self._exchange_data_lock.acquire()
-    self._sound_repeat = rep
+    self._sound_repeat[ext] = rep
     self._exchange_data_lock.release()
     self._TransferDataChanged = True
     return None
 
-  def getSoundRepeat(self):
+  def getSoundRepeat(self, ext=C_EXT_MASTER):
     """
       Liefert die aktuell eingestellte Wiederholungs-Anzahl des Sounds zurueck.
 
@@ -1063,7 +1063,7 @@ class ftTXT(object):
 
       >>> repeat_rate = txt.getSoundRepeat()
     """
-    return self._sound_repeat
+    return self._sound_repeat[ext]
 
   def setSoundVolume(self, volume):
     """
@@ -1445,7 +1445,7 @@ class ftTXT(object):
       ret=self._current_motor_cmd_id[4*ext:4*ext+4]
     return ret
 
-  def getCurrentSoundCmdId(self):
+  def getCurrentSoundCmdId(self, ext=C_EXT_MASTER):
     """
       Liefert die aktuelle Sound Command ID zurueck.
 
@@ -1456,7 +1456,7 @@ class ftTXT(object):
 
       >>> print("Die aktuelle Sound Command ID ist: ", txt.getCurrentSoundCmdId())
     """
-    ret=self._current_sound_cmd_id
+    ret=self._current_sound_cmd_id[ext]
     return ret
 
   def getCurrentIr(self):
@@ -2210,7 +2210,7 @@ class ftTXTexchange(threading.Thread):
                     res=self._txt._spi.xfer([self._txt.C_SND_CMD_STATUS, self._txt.getSoundCmdId(), 0])
                     nFreeBuffers = res[1]
                     self._txt._sound_state = self._txt.C_SND_STATE_IDLE
-                    self._txt._current_sound_cmd_id = self._txt.getSoundCmdId()
+                    self._txt._current_sound_cmd_id[0] = self._txt.getSoundCmdId()
                     break
       else:
        try:
@@ -2239,7 +2239,7 @@ class ftTXTexchange(threading.Thread):
             uncbuf += self._txt._motor_dist[:4]
             uncbuf += self._txt._motor_cmd_id[:4]
             uncbuf += self._txt._counter[:4]
-            uncbuf += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat]
+            uncbuf += [self._txt._sound[0], self._txt._sound_index[0], self._txt._sound_repeat[0]]
             # add SLAVE flieds
             uncbuf += self._txt._pwm[8:]
             uncbuf += self._txt._motor_sync[4:]
@@ -2247,7 +2247,7 @@ class ftTXTexchange(threading.Thread):
             uncbuf += self._txt._motor_cmd_id[4:]
             uncbuf += self._txt._counter[4:]
             # for now use same sound as for MASTER
-            uncbuf += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat]
+            uncbuf += [self._txt._sound[1], self._txt._sound_index[1], self._txt._sound_repeat[1]]
             self._txt._exchange_data_lock.release()
             # compress buffer
             self.compBuffer.Reset()
@@ -2331,7 +2331,7 @@ class ftTXTexchange(threading.Thread):
                 elif i<24:
                   self._txt._current_motor_cmd_id[i-20] = d
                 elif i<25:
-                  self._txt._current_sound_cmd_id = d
+                  self._txt._current_sound_cmd_id[0] = d
                 elif i<52:
                   self._txt._current_ir[i-25] = d
                 # EXTENSION
@@ -2346,9 +2346,7 @@ class ftTXTexchange(threading.Thread):
                 elif i<76:
                   self._txt._current_motor_cmd_id[i-68] = d
                 elif i<77:
-                  pass
-                  # TODO: extra sound_cmd_id for extension
-                  #self._txt._current_sound_cmd_id = d
+                  self._txt._current_sound_cmd_id[1] = d
                 else:
                   pass # extension does not provide ir input data
                   
@@ -2371,7 +2369,7 @@ class ftTXTexchange(threading.Thread):
           fields += self._txt._motor_dist[:4]
           fields += self._txt._motor_cmd_id[:4]
           fields += self._txt._counter[:4]
-          fields += [self._txt._sound, self._txt._sound_index, self._txt._sound_repeat,0,0]
+          fields += [self._txt._sound[0], self._txt._sound_index[0], self._txt._sound_repeat[0],0,0]
           self._txt._exchange_data_lock.release()
           buf = struct.pack('<I8h4h4h4h4hHHHbb', *fields)
           self._txt._socket_lock.acquire()
@@ -2400,8 +2398,8 @@ class ftTXTexchange(threading.Thread):
           self._txt._current_counter_value[:4]  = response[13:17]
           self._txt._current_counter_cmd_id[:4] = response[17:21]
           self._txt._current_motor_cmd_id[:4]   = response[21:25]
-          self._txt._current_sound_cmd_id   = response[25]
-          self._txt._current_ir             = response[26:52]
+          self._txt._current_sound_cmd_id[0]    = response[25]
+          self._txt._current_ir                 = response[26:52]
           self._txt.handle_data(self._txt)
           self._txt._exchange_data_lock.release()
       
@@ -3494,7 +3492,7 @@ class ftrobopy(ftTXT):
           return 0
     return remote(self, remote_type)
 
-  def sound_finished(self):
+  def sound_finished(self, ext=ftTXT.C_EXT_MASTER):
     """
       Ueberpruefen, ob der zuletzt gespielte Sounds bereits abgelaufen ist
       
@@ -3506,12 +3504,12 @@ class ftrobopy(ftTXT):
       >>> while not ftrob.sound_finished():
             pass
     """
-    if self._current_sound_cmd_id == self.getSoundCmdId():
+    if self._current_sound_cmd_id[ext] == self.getSoundCmdId(ext):
       return True
     else:
       return False
 
-  def play_sound(self, idx, repeat=1, volume=100):
+  def play_sound(self, idx, repeat=1, volume=100, ext=ftTXT.C_EXT_MASTER):
     """
       Einen Sound ein- oder mehrmals abspielen.
       
@@ -3563,14 +3561,14 @@ class ftrobopy(ftTXT):
       >>> ftrob.play_sound(5, repeat=2, volume=10) # 2 mal hintereinander leise hupen
     """
     
-    if idx != self.getSoundIndex():
-      self.setSoundIndex(idx)
+    if idx != self.getSoundIndex(ext):
+      self.setSoundIndex(idx, ext)
     if volume != self.getSoundVolume and self._directmode:
       self.setSoundVolume(volume)
-    self.setSoundRepeat(repeat)
-    self.incrSoundCmdId()
+    self.setSoundRepeat(repeat, ext)
+    self.incrSoundCmdId(ext)
 
-  def stop_sound(self):
+  def stop_sound(self, ext=ftTXT.C_EXT_MASTER):
     """
       Die Aktuelle Soundausgabe stoppen. Dabei wird der abzuspielende Sound-Index auf 0 (=Kein Sound)
       und der Wert fuer die Anzahl der Wiederholungen auf 1 gesetzt.
@@ -3581,7 +3579,7 @@ class ftrobopy(ftTXT):
       
       >>> ftrob.stop_sound()
     """
-    self.setSoundIndex(0)
-    self.setSoundRepeat(1)
-    self.incrSoundCmdId()
+    self.setSoundIndex(0, ext)
+    self.setSoundRepeat(1, ext)
+    self.incrSoundCmdId(ext)
 
