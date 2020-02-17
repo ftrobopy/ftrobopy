@@ -20,11 +20,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.90"
+__version__     = "1.91"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "02/11/2020"
+__date__        = "02/17/2020"
 
 try:
   xrange
@@ -41,7 +41,7 @@ def version():
 
      >>> print("ftrobopy Version ", ftrobopy.ftrobopy.version())
   """
-  return __version__
+  return __version__ + " " + __status__
 
 
 def default_error_handler(message, exception):
@@ -667,7 +667,7 @@ class ftTXT(object):
     # MODE_ULTRASONIC=3
     # MODE_INVALID=4
     # print("setConfig I=", I)
-    self._ftX1_uni[12*ext:12*ext+12] = [I[0][0],I[0][1],b'\x00\x00',
+    self._ftX1_uni[24*ext:24*ext+24] = [I[0][0],I[0][1],b'\x00\x00',
                                         I[1][0],I[1][1],b'\x00\x00',
                                         I[2][0],I[2][1],b'\x00\x00',
                                         I[3][0],I[3][1],b'\x00\x00',
@@ -1645,7 +1645,6 @@ class ftTXTKeepConnection(threading.Thread):
 
 class CRC32(object):
   def __init__(self):
-    #print("CRC32.__init__()")
     self.Reset()
     self.m_table = [0 for i in range(256)]
     for dividend in range(256):
@@ -1658,7 +1657,6 @@ class CRC32(object):
           remainder = (remainder << 1)
         #remainder &= 0xffffffff
       self.m_table[dividend] = remainder & 0xffffffff
-    #print("CRC32.m_table initialized")
     return
 
   def Reset(self):
@@ -1671,17 +1669,12 @@ class CRC32(object):
     val &= 0xffff
     data = (self.m_crc >> 24) ^ (val >> 8)
     data &= 0xff
-    #print(self.c, " val=", val, " data1=", data)
-    #print("1. data list index in CRC32.Add16bit =", data, " m_table[data]=", self.m_table[data])
     self.m_crc = (self.m_crc << 8) ^ self.m_table[data]
     self.m_crc &= 0xffffffff
-    #print("m_crc=", self.m_crc)
     data = (self.m_crc >> 24) ^ (val & 0xff)
     data &= 0xff
-    #print("2. data list index in CRC32.Add16bit =", data, " m_table[data]=", self.m_table[data])
     self.m_crc = ((self.m_crc << 8) & 0xffffffff) ^ self.m_table[data]
     self.m_crc &= 0xffffffff
-    #print("m_crc=", self.m_crc)
     return
 
 class compBuffer(object):
@@ -1700,7 +1693,6 @@ class compBuffer(object):
     self.m_bitbuffer                = 0
     self.m_bitcount                 = 0
     self.m_nochange_count           = 0
-    #self.m_previous_words           = [0]
     self.m_previous_word            = 0
     self.m_crc.Reset()
     return
@@ -1726,14 +1718,11 @@ class compBuffer(object):
     word = 0
     if self.m_nochange_count > 0:
       self.m_nochange_count -= 1
-      #word = self.m_previous_words[-1]
       word = self.m_previous_word
     else:
       head = self.GetBits(2)
-      #print("head = ", head)
       if head == 0:
         # 00 NoChange 1x16 bit
-        #word = self.m_previous_words[-1]
         word = self.m_previous_word
       elif head == 1:
         # 01 00 NoChange 2x16 bit
@@ -1742,7 +1731,6 @@ class compBuffer(object):
         # 01 11 xxxx NoChange 5..19x16 bit
         # 01 11 1111 xxxxxxxx NoChange 20..274 x16 bit
         # 01 11 1111 11111111 xxxxxxxx-xxxxxxxx NoChange 275... x16 bit
-        #word = self.m_previous_words[-1]
         word = self.m_previous_word
         count = self.GetBits(2)
         if count<3:
@@ -1759,14 +1747,12 @@ class compBuffer(object):
               count = self.GetBits(16)
               self.m_nochange_count = count+275-1
       elif head == 2:
-        #if self.m_previous_words[-1] > 0:
         if self.m_previous_word > 0:
           word = 0
         else:
           word = 1
-      elif head == 3: # head == 3:
+      elif head == 3:
         word = self.GetBits(16)
-    #self.m_previous_words.append(word)
     self.m_previous_word=0
     #self.m_crc.Add16bit(word)
     return(word)
@@ -1832,12 +1818,10 @@ class compBuffer(object):
     else:
       self.m_crc.Add16bit(word_for_crc)
 
-    #if word == self.m_previous_words[-1]:
     if word == self.m_previous_word:
       self.m_nochange_count += 1
     else:
       self.EncodeNoChangeCount()
-      #if (word == 1 and self.m_previous_words[-1] == 0) or (word == 0 and self.m_previous_words[-1] != 0):
       if (word == 1 and self.m_previous_word == 0) or (word == 0 and self.m_previous_word != 0):
         # 10 Toggle (0 to 1, everything else to 0)
         self.PushBits(2,2)
@@ -1845,7 +1829,6 @@ class compBuffer(object):
         # 11 16 bit follow immediately
         self.PushBits(2,3)
         self.PushBits(16,word)
-    #self.m_previous_words.append(word)
     self.m_previous_word = 0
 
   def Finish(self):
@@ -2287,13 +2270,7 @@ class ftTXTexchange(threading.Thread):
             cmpbuf = self._cmpbuf0
           
           m_extrasize = len(cmpbuf)
-          #if isinstance(cmpbuf, bytes):
-          #  fields.append(cmpbuf)
-          #else:
-          #  fields.append(bytearray(cmpbuf,'utf-8'))
-          
           fields += cmpbuf
-          
           fstr   += str(m_extrasize)+'B'
           #fields += [0] # dummy byte UINT8
           #fstr   += 'B'
@@ -2359,7 +2336,6 @@ class ftTXTexchange(threading.Thread):
                   self._txt._current_ir[i-25] = d
                 # EXTENSION
                 elif i<60:
-                  print(i,d)
                   self._txt._current_input[i-44] = d
                 elif i<64:
                   self._txt._current_counter[i-56] = d
