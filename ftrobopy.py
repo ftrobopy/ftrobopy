@@ -15,16 +15,17 @@ import threading
 import struct
 import time
 from math import sqrt, log
+import ftTA2py
 
 __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.92"
+__version__     = "1.93"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "02/17/2020"
+__date__        = "05/29/2020"
 
 try:
   xrange
@@ -111,7 +112,7 @@ class ftTXT(object):
   C_SND_STATE_DATA             = 0x04
 
 
-  def __init__(self, host='127.0.0.1', port=65000, serport='/dev/ttyO2' , on_error=default_error_handler, on_data=default_data_handler, directmode=False, use_extension=False):
+  def __init__(self, host='127.0.0.1', port=65000, serport='/dev/ttyO2' , on_error=default_error_handler, on_data=default_data_handler, directmode=False, use_extension=False, use_TransferAreaMode=False):
     """
       Initialisierung der ftTXT Klasse:
 
@@ -153,6 +154,7 @@ class ftTXT(object):
     self.handle_data           = on_data
     self._directmode           = directmode
     self._use_extension        = use_extension
+    self._use_TransferAreaMode = use_TransferAreaMode
     self._spi                  = None
     self._SoundFilesDir        = ''
     self._SoundFilesList       = []
@@ -161,7 +163,14 @@ class ftTXT(object):
     self._sound_data_idx       = 0
     self._sound_current_rep    = 0
     self._sound_current_volume = 100
-    if self._directmode:
+    self._TransferArea_isInitialized = False
+    if self._use_TransferAreaMode:
+      if (ftTA2py.initTA()) == 1:
+        self._TransferArea_isInitialized = True
+      else:
+        print("Error: Transfer Area could not be initialized!")
+        sys.exit(-1)
+    elif self._directmode:
       import serial
       self._ser_ms     = serial.Serial(self._ser_port, 230000, timeout=1)
       self._sock       = None
@@ -285,8 +294,15 @@ class ftTXT(object):
     self._debug                   = []
     self._exchange_data_lock.release() 
 
+  def stopTransferArea(self):
+    if self._TransferArea_isInitialized:
+      ftTA2py.stopTA()
+    
   def isOnline(self):
-    return (not self._txt_stop_event.is_set()) and (self._txt_thread is not None)
+    if self._use_TransferAreaMode:
+      return self._TransferArea_isInitialized
+    else:
+      return (not self._txt_stop_event.is_set()) and (self._txt_thread is not None)
   
   def cameraIsOnline(self):
     return (not self._camera_stop_event.is_set()) and (self._camera_thread is not None)
@@ -303,6 +319,13 @@ class ftTXT(object):
 
        >>> name, version = txt.queryStatus()
     """
+    if self._use_TransferAreaMode:
+      # TODO
+      # not sure how to detect version yet, just set standard value
+      self._m_devicename = 'TXT TransferAreaMode'
+      self._m_version    =  0x4060600
+      self._m_firmware   = 'firmware version not detected'
+      return self._m_devicename, self._m_version
     if self._directmode:
       # not sure how to detect version yet, just set standard value
       self._m_devicename = 'TXT direct'
@@ -532,6 +555,8 @@ class ftTXT(object):
 
        >>> txt.startOnline()
     """
+    if self._TransferArea_isInitialized:
+      return
     if self._directmode == True:
       if self._txt_stop_event.is_set():
         self._txt_stop_event.clear()
@@ -588,6 +613,9 @@ class ftTXT(object):
 
        >>> txt.stopOnline()
     """
+    if self._TransferArea_isInitialized:
+      self.stopTransferArea()
+      return None
     if self._directmode:
       self._txt_stop_event.set()
       self._txt_thread = None
@@ -710,6 +738,9 @@ class ftTXT(object):
        >>> txt.setConfig(M, I)
        >>> txt.updateConfig()
     """
+    if self._use_TransferAreaMode:
+      # in TransferAreaMode the configuration is automatically updated
+      return
     if self._directmode:
       # in direct mode i/o port configuration is performed automatically in exchangeData thread
       return
@@ -887,11 +918,14 @@ class ftTXT(object):
       >>> txt.setMotorDistance(1, 200)
       >>> txt.incrMotorCmdId(1)
     """
-    self._exchange_data_lock.acquire()
-    self._motor_cmd_id[4*ext+idx] += 1
-    self._motor_cmd_id[4*ext+idx] &= 0x07
-    self._exchange_data_lock.release()
-    self._TransferDataChanged = True
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1out_incr_motor_cmd_id(ext,idx)
+    else:
+      self._exchange_data_lock.acquire()
+      self._motor_cmd_id[4*ext+idx] += 1
+      self._motor_cmd_id[4*ext+idx] &= 0x07
+      self._exchange_data_lock.release()
+      self._TransferDataChanged = True
     return None
 
   def getMotorCmdId(self, idx=None, ext=C_EXT_MASTER):
@@ -908,10 +942,16 @@ class ftTXT(object):
 
       >>> letzte_cmd_id = txt.getMotorCmdId(4)
     """
-    if idx != None:
-      ret=self._motor_cmd_id[4*ext+idx]
+    if self._use_TransferAreaMode:
+      if idx != None:
+        ret=ftTA2py.fX1in_motor_ex_cmd_id(ext,idx)
+      else:
+        ret=[ftTA2py.fX1in_motor_ex_cmd_id(ext,0), ftTA2py.fX1in_motor_ex_cmd_id(ext,1), ftTA2py.fX1in_motor_ex_cmd_id(ext,2), ftTA2py.fX1in_motor_ex_cmd_id(ext,3)]
     else:
-      ret=self._motor_cmd_id[4*ext:4*ext+4]
+      if idx != None:
+        ret=self._motor_cmd_id[4*ext+idx]
+      else:
+        ret=self._motor_cmd_id[4*ext:4*ext+4]
     return ret
 
   def cameraOnline(self):
@@ -952,6 +992,9 @@ class ftTXT(object):
 
       >>> txt.incrCounterCmdId(3)
     """
+    if self._use_TransferAreaMode:
+      # not used
+      return
     self._exchange_data_lock.acquire()
     self._counter[4*ext+idx] += 1
     self._counter[4*ext+idx] &= 0x07
@@ -1130,6 +1173,9 @@ class ftTXT(object):
 
       >>> num = txt.getCounterCmdId(2)
     """
+    if self._use_TransferAreaMode:
+      # not used
+      return
     if idx != None:
       ret=self._counter[4*ext+idx]
     else:
@@ -1161,6 +1207,10 @@ class ftTXT(object):
     """
     if value == 1:
       value = 0
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1out_duty(0, idx, value)
+      self._pwm[8*ext+idx]=value
+      return
     self._exchange_data_lock.acquire()
     self._pwm[8*ext+idx]=value
     self._exchange_data_lock.release()
@@ -1242,6 +1292,10 @@ class ftTXT(object):
       >>> txt.incrMotorCmdId(0)
       >>> txt.incrMotorCmdId(1)
     """
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1out_master(ext, idx, value)
+      self._motor_sync[4*ext+idx]=value
+      return
     self._exchange_data_lock.acquire()
     self._motor_sync[4*ext+idx]=value
     self._exchange_data_lock.release()
@@ -1294,6 +1348,10 @@ class ftTXT(object):
       >>> txt.setMotorDistance(2, 100)
       >>> txt.incrMotorCmdId(2)
     """
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1out_distance(ext, idx, value)
+      self._motor_dist[4*ext+idx]=value
+      return
     self._exchange_data_lock.acquire()
     self._motor_dist[4*ext+idx]=value
     self._exchange_data_lock.release()
@@ -1341,6 +1399,11 @@ class ftTXT(object):
 
        >>> print("Der aktuelle Wert des Eingangs I4 ist: ", txt.getCurrentInput(3))
     """
+    if self._use_TransferAreaMode:
+      if idx != None:
+        ret = ftTA2py.fX1in_uni(ext, idx)
+      else:
+        ret = [ftTA2py.fX1in_uni(ext, 0), ftTA2py.fX1in_uni(ext, 1), ftTA2py.fX1in_uni(ext, 2), ftTA2py.fX1in_uni(ext, 3)]
     if idx != None:
       ret=self._current_input[8*ext+idx]
     else:
@@ -1368,6 +1431,11 @@ class ftTXT(object):
       >>> else:
       >>>   print("Counter C1 hat sich seit der letzten Abfrage veraendert")
     """
+    if self._use_TransferAreaMode:
+      if idx != None:
+        ret = ftTA2py.fX1in_cnt_in(ext, idx)
+      else:
+        ret = [ftTA2py.fX1in_cnt_in(ext, 0), ftTA2py.fX1in_cnt_in(ext, 1), ftTA2py.fX1in_cnt_in(ext, 2),ftTA2py.fX1in_cnt_in(ext, 3)]
     if idx != None:
       ret=self._current_counter[4*ext+idx]
     else:
@@ -1392,6 +1460,11 @@ class ftTXT(object):
 
       >>> print("Aktueller Wert von C1: ", txt.getCurrentCounterValue(0)
     """
+    if self._use_TransferAreaMode:
+      if idx != None:
+        ret = ftTA2py.fX1in_counter(ext, idx)
+      else:
+        ret = [ftTA2py.fX1in_counter(ext, 0), ftTA2py.fX1in_counter(ext, 1), ftTA2py.fX1in_counter(ext, 2),ftTA2py.fX1in_counter(ext, 3)]
     if idx != None:
       ret=self._current_counter_value[4*ext+idx]
     else:
@@ -1416,6 +1489,11 @@ class ftTXT(object):
       >>> cid = txt.getCurrentCounterCmdId(3)
       >>> print("Aktuelle Counter Command ID von C4: ", cid)
     """
+    if self._use_TransferAreaMode:
+      if idx != None:
+        ret = ftTA2py.fX1in_cnt_reset_cmd_id(ext, idx)
+      else:
+        ret = [ftTA2py.fX1in_cnt_reset_cmd_id(ext, 0), ftTA2py.fX1in_cnt_reset_cmd_id(ext, 1), ftTA2py.fX1in_cnt_reset_cmd_id(ext, 2),ftTA2py.fX1in_cnt_reset_cmd_id(ext, 3)]
     if idx != None:
       ret=self._current_counter_cmd_id[4*ext+idx]
     else:
@@ -1439,6 +1517,11 @@ class ftTXT(object):
 
       >>> print("Aktuelle Motor Command ID von M4: ", txt.getCurrentMotorCmdId(3))
     """
+    if self._use_TransferAreaMode:
+      if idx != None:
+        ret = ftTA2py.fX1in_motor_ex_cmd_id(ext, idx)
+      else:
+        ret = [ftTA2py.fX1in_motor_ex_cmd_id(ext, 0), ftTA2py.fX1in_motor_ex_cmd_id(ext, 1), ftTA2py.fX1in_motor_ex_cmd_id(ext, 2),ftTA2py.fX1in_motor_ex_cmd_id(ext, 3)]
     if idx != None:
       ret=self._current_motor_cmd_id[4*ext+idx]
     else:
@@ -1570,6 +1653,8 @@ class ftTXT(object):
       >>> lampe1.setLevel(512)
       >>> SyncDataEnd()
     """
+    if self._use_TransferArea:
+      return
     self._exchange_data_lock.acquire()
 
   def SyncDataEnd(self):
@@ -1578,6 +1663,8 @@ class ftTXT(object):
 
       Anwendungsbeispiel siehe SyncDataBegin()
     """
+    if self._use_TransferArea:
+      return
     self._exchange_data_lock.release()
 
   def updateWait(self, minimum_time=0.001):
@@ -1594,6 +1681,8 @@ class ftTXT(object):
       Ein einfaches "pass" anstelle des "updateWait()" wuerde zu einer deutlich hoeheren CPU-Last fuehren.
       
     """
+    if self._use_TransferAreaMode:
+      return
     self._exchange_data_lock.acquire()
     self._update_status = 0
     self._exchange_data_lock.release()
@@ -1606,6 +1695,8 @@ class ftTXTKeepConnection(threading.Thread):
     Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
     """
   def __init__(self, txt, maxtime, stop_event):
+    if self._use_TransferArea:
+      return
     threading.Thread.__init__(self)
     self._txt            = txt
     self._txt_maxtime    = maxtime
@@ -1613,6 +1704,8 @@ class ftTXTKeepConnection(threading.Thread):
     return
   
   def run(self):
+    if self._use_TransferArea:
+      return
     while not self._txt_stop_event.is_set():
       try:
         self._txt._keep_running_lock.acquire()
@@ -1848,6 +1941,8 @@ class ftTXTexchange(threading.Thread):
   Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
   """
   def __init__(self, txt, sleep_between_updates, stop_event):
+    if self._use_TransferArea:
+      return
     threading.Thread.__init__(self)
     self._txt                       = txt
     self._txt_sleep_between_updates = sleep_between_updates
@@ -1865,6 +1960,8 @@ class ftTXTexchange(threading.Thread):
     return
   
   def run(self):
+    if self._use_TransferArea:
+      return
     while not self._txt_stop_event.is_set():
       if self._txt._directmode :
         if (self._txt_sleep_between_updates > 0):
@@ -2592,7 +2689,7 @@ class ftrobopy(ftTXT):
     * **sound_finished**
     
   """
-  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01, special_connection='127.0.0.1', use_extension=False):
+  def __init__(self, host='127.0.0.1', port=65000, update_interval=0.01, special_connection='127.0.0.1', use_extension=False, use_TransferAreaMode=False):
 
     """
       Initialisierung der ftrobopy Klasse:
@@ -2698,7 +2795,7 @@ class ftrobopy(ftTXT):
           return
       ftTXT.__init__(self, directmode=True)
     else:
-      ftTXT.__init__(self, host, port, use_extension=use_extension)
+      ftTXT.__init__(self, host, port, use_extension=use_extension, use_TransferAreaMode=use_TransferAreaMode)
     self._txt_is_initialzed = True
     self.queryStatus()
     if self.getVersionNumber() < 0x4010500:
@@ -2884,6 +2981,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     M[output-1] = ftTXT.C_MOTOR
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      pass
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -2930,6 +3029,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     M[int((num-1)/2)] = ftTXT.C_OUTPUT
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      pass
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -2971,6 +3072,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1config_uni(ext, num-1, I[num-1][0], I[num-1][1] )
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -3032,6 +3135,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_RESISTOR, ftTXT.C_ANALOG)
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1config_uni(ext, num-1, I[num-1][0], I[num-1][1] )
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -3073,6 +3178,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1config_uni(ext, num-1, I[num-1][0], I[num-1][1] )
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -3113,6 +3220,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1config_uni(ext, num-1, I[num-1][0], I[num-1][1] )
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -3173,6 +3282,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1config_uni(ext, num-1, I[num-1][0], I[num-1][1] )
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -3222,6 +3333,8 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_DIGITAL)
     self.setConfig(M, I, ext)
+    if self._use_TransferAreaMode:
+      ftTA2py.fX1config_uni(ext, num-1, I[num-1][0], I[num-1][1] )
     self.updateConfig(ext)
     if wait:
       self.updateWait()
