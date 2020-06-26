@@ -15,7 +15,7 @@ import threading
 import struct
 import time
 from math import sqrt, log
-import ftTA2py
+#import ftTA2py
 
 __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
@@ -1695,8 +1695,6 @@ class ftTXTKeepConnection(threading.Thread):
     Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
     """
   def __init__(self, txt, maxtime, stop_event):
-    if self._use_TransferArea:
-      return
     threading.Thread.__init__(self)
     self._txt            = txt
     self._txt_maxtime    = maxtime
@@ -1704,8 +1702,6 @@ class ftTXTKeepConnection(threading.Thread):
     return
   
   def run(self):
-    if self._use_TransferArea:
-      return
     while not self._txt_stop_event.is_set():
       try:
         self._txt._keep_running_lock.acquire()
@@ -1941,8 +1937,6 @@ class ftTXTexchange(threading.Thread):
   Typischerweise wird diese Thread-Klasse vom Endanwender nicht direkt verwendet.
   """
   def __init__(self, txt, sleep_between_updates, stop_event):
-    if self._use_TransferArea:
-      return
     threading.Thread.__init__(self)
     self._txt                       = txt
     self._txt_sleep_between_updates = sleep_between_updates
@@ -1960,8 +1954,6 @@ class ftTXTexchange(threading.Thread):
     return
   
   def run(self):
-    if self._use_TransferArea:
-      return
     while not self._txt_stop_event.is_set():
       if self._txt._directmode :
         if (self._txt_sleep_between_updates > 0):
