@@ -15,17 +15,21 @@ import threading
 import struct
 import time
 from math import sqrt, log
-#import ftTA2py
+
+try:
+  import ftTA2py
+except:
+  pass
 
 __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.93"
+__version__     = "1.94"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "05/29/2020"
+__date__        = "06/26/2020"
 
 try:
   xrange
@@ -168,7 +172,7 @@ class ftTXT(object):
       if (ftTA2py.initTA()) == 1:
         self._TransferArea_isInitialized = True
       else:
-        print("Error: Transfer Area could not be initialized!")
+        print("Error: Transfer Area could not be initialized! Please check if ftTA2py.so exists.")
         sys.exit(-1)
     elif self._directmode:
       import serial
