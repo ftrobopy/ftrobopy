@@ -2,7 +2,7 @@
 ***********************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 ***********************************************************************
-(c) 2015, 2016, 2017, 2018, 2019, 2020 by Torsten Stuehn
+(c) 2015, 2016, 2017, 2018, 2019, 2020, 2021 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -22,14 +22,14 @@ except:
   pass
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015 - 2020 by Torsten Stuehn"
+__copyright__   = "Copyright 2015 - 2021 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.94"
+__version__     = "1.95"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "06/26/2020"
+__date__        = "01/25/2021"
 
 try:
   xrange
@@ -330,7 +330,7 @@ class ftTXT(object):
       self._m_version    =  0x4060600
       self._m_firmware   = 'firmware version not detected'
       return self._m_devicename, self._m_version
-    if self._directmode:
+    elif self._directmode:
       # not sure how to detect version yet, just set standard value
       self._m_devicename = 'TXT direct'
       self._m_version    =  0x4010500
@@ -751,7 +751,6 @@ class ftTXT(object):
     if not self.isOnline():
       self.handle_error("Controller must be online before updateConfig() is called", None)
       return
-    #print("updateConfig ext=",ext)
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id[ext] += 1
@@ -1407,11 +1406,12 @@ class ftTXT(object):
       if idx != None:
         ret = ftTA2py.fX1in_uni(ext, idx)
       else:
-        ret = [ftTA2py.fX1in_uni(ext, 0), ftTA2py.fX1in_uni(ext, 1), ftTA2py.fX1in_uni(ext, 2), ftTA2py.fX1in_uni(ext, 3)]
-    if idx != None:
-      ret=self._current_input[8*ext+idx]
+        ret = [ftTA2py.fX1in_uni(ext, 0), ftTA2py.fX1in_uni(ext, 1), ftTA2py.fX1in_uni(ext, 2), ftTA2py.fX1in_uni(ext, 3), ftTA2py.fX1in_uni(ext, 4), ftTA2py.fX1in_uni(ext, 5), ftTA2py.fX1in_uni(ext, 6), ftTA2py.fX1in_uni(ext, 7) ]
     else:
-      ret=self._current_input[8*ext:8*ext+8]
+      if idx != None:
+        ret=self._current_input[8*ext+idx]
+      else:
+        ret=self._current_input[8*ext:8*ext+8]
     return ret
 
   def getCurrentCounterInput(self, idx=None, ext=C_EXT_MASTER):
@@ -1440,10 +1440,11 @@ class ftTXT(object):
         ret = ftTA2py.fX1in_cnt_in(ext, idx)
       else:
         ret = [ftTA2py.fX1in_cnt_in(ext, 0), ftTA2py.fX1in_cnt_in(ext, 1), ftTA2py.fX1in_cnt_in(ext, 2),ftTA2py.fX1in_cnt_in(ext, 3)]
-    if idx != None:
-      ret=self._current_counter[4*ext+idx]
     else:
-      ret=self._current_counter[4*ext:4*ext+4]
+      if idx != None:
+        ret=self._current_counter[4*ext+idx]
+      else:
+        ret=self._current_counter[4*ext:4*ext+4]
     return ret
 
   def getCurrentCounterValue(self, idx=None, ext=C_EXT_MASTER):
@@ -1469,10 +1470,11 @@ class ftTXT(object):
         ret = ftTA2py.fX1in_counter(ext, idx)
       else:
         ret = [ftTA2py.fX1in_counter(ext, 0), ftTA2py.fX1in_counter(ext, 1), ftTA2py.fX1in_counter(ext, 2),ftTA2py.fX1in_counter(ext, 3)]
-    if idx != None:
-      ret=self._current_counter_value[4*ext+idx]
     else:
-      ret=self._current_counter_value[4*ext:4*ext+4]
+      if idx != None:
+        ret=self._current_counter_value[4*ext+idx]
+      else:
+        ret=self._current_counter_value[4*ext:4*ext+4]
     return ret
 
   def getCurrentCounterCmdId(self, idx=None, ext=C_EXT_MASTER):
@@ -1498,10 +1500,11 @@ class ftTXT(object):
         ret = ftTA2py.fX1in_cnt_reset_cmd_id(ext, idx)
       else:
         ret = [ftTA2py.fX1in_cnt_reset_cmd_id(ext, 0), ftTA2py.fX1in_cnt_reset_cmd_id(ext, 1), ftTA2py.fX1in_cnt_reset_cmd_id(ext, 2),ftTA2py.fX1in_cnt_reset_cmd_id(ext, 3)]
-    if idx != None:
-      ret=self._current_counter_cmd_id[4*ext+idx]
     else:
-      ret=self._current_counter_cmd_id[4*ext:4*ext+4]
+      if idx != None:
+        ret=self._current_counter_cmd_id[4*ext+idx]
+      else:
+        ret=self._current_counter_cmd_id[4*ext:4*ext+4]
     return ret
 
   def getCurrentMotorCmdId(self, idx=None, ext=C_EXT_MASTER):
@@ -1526,10 +1529,11 @@ class ftTXT(object):
         ret = ftTA2py.fX1in_motor_ex_cmd_id(ext, idx)
       else:
         ret = [ftTA2py.fX1in_motor_ex_cmd_id(ext, 0), ftTA2py.fX1in_motor_ex_cmd_id(ext, 1), ftTA2py.fX1in_motor_ex_cmd_id(ext, 2),ftTA2py.fX1in_motor_ex_cmd_id(ext, 3)]
-    if idx != None:
-      ret=self._current_motor_cmd_id[4*ext+idx]
     else:
-      ret=self._current_motor_cmd_id[4*ext:4*ext+4]
+      if idx != None:
+        ret=self._current_motor_cmd_id[4*ext+idx]
+      else:
+        ret=self._current_motor_cmd_id[4*ext:4*ext+4]
     return ret
 
   def getCurrentSoundCmdId(self, ext=C_EXT_MASTER):
@@ -2977,8 +2981,6 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     M[output-1] = ftTXT.C_MOTOR
     self.setConfig(M, I, ext)
-    if self._use_TransferAreaMode:
-      pass
     self.updateConfig(ext)
     if wait:
       self.updateWait()
@@ -3025,8 +3027,6 @@ class ftrobopy(ftTXT):
     M, I = self.getConfig(ext)
     M[int((num-1)/2)] = ftTXT.C_OUTPUT
     self.setConfig(M, I, ext)
-    if self._use_TransferAreaMode:
-      pass
     self.updateConfig(ext)
     if wait:
       self.updateWait()
