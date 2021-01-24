@@ -8,12 +8,12 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 // ftTA2py -- part of ftrobopy; module to use Transfer Area method in download mode
 // fischertechnik TXT controller
-// version 0.10 (2020-05-27)
+// version 0.20 (2021-01-25)
 // by Torsten Stuehn <stuehn@mailbox.org>
 //
 // The MIT License (MIT)
 //
-// Copyright (c) 2020 Torsten Stuehn
+// Copyright (c) 2020,2021 Torsten Stuehn
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -61,6 +61,8 @@ static PyObject *ftTA2py_fX1out_distance(PyObject *self, PyObject *args);
 // static PyObject *ftTA2py_fX1out_motor_ex_cmd_id(PyObject *self, PyObject *args);
 static PyObject *ftTA2py_fX1out_incr_motor_cmd_id(PyObject *self, PyObject *args);
 static PyObject *ftTA2py_fX1out_duty(PyObject *self, PyObject *args);
+static PyObject *ftTA2py_TxtPowerSupply(PyObject *self, PyObject *args);
+static PyObject *ftTA2py_TxtCPUTemperature(PyObject *self, PyObject *args);
 
 static PyMethodDef ftTA2py_methods[] = {
   {"initTA", ftTA2py_initTA, METH_VARARGS, "Initialize Transfer Area program."},
@@ -80,6 +82,8 @@ static PyMethodDef ftTA2py_methods[] = {
   //{"fX1out_motor_ex_cmd_id", ftTA2py_fX1out_motor_ex_cmd_id, METH_VARARGS, "Increments motor_ex settings change. "},
   {"fX1out_incr_motor_cmd_id", ftTA2py_fX1out_incr_motor_cmd_id, METH_VARARGS, "Increment motor_cmd_id. Necessary after each motor distance setting. "},
   {"fX1out_duty", ftTA2py_fX1out_duty, METH_VARARGS, "Set PWM duty cycle value for motor."},
+  {"TxtPowerSupply", ftTA2py_TxtPowerSupply, METH_VARARGS, "Get current voltage of TXT power supply."},
+  {"TxtCPUTemperature", ftTA2py_TxtCPUTemperature, METH_VARARGS, "Get current TXT CPU temperature."},
     
   {NULL, NULL, 0, NULL}
 };
@@ -205,7 +209,7 @@ ftTA2py_fX1in_uni(PyObject *self, PyObject *args)
   }
 
   value = (pTArea + extnr)->ftX1in.uni[inputnr];
-    
+
   res = Py_BuildValue("I", value);
   return res;
 }
@@ -456,6 +460,50 @@ ftTA2py_fX1out_duty(PyObject *self, PyObject *args)
     (pTArea + extnr)->ftX1out.duty[outputnr] = duty;
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+// Power supply of TXT (in mV)
+static PyObject *
+ftTA2py_TxtPowerSupply(PyObject *self, PyObject *args)
+{
+  unsigned char extnr;   // 0:Master, 1:Extension
+  unsigned int value;
+
+  PyObject * res;
+
+  if (!PyArg_ParseTuple(args, "B", &extnr))
+    return NULL;
+  if (isInitialized == 0) {
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  value = (pTArea + extnr)->sTxtInputs.u16TxtPower;
+
+  res = Py_BuildValue("I", value);
+  return res;
+}
+
+// TXT CPU temperature
+static PyObject *
+ftTA2py_TxtCPUTemperature(PyObject *self, PyObject *args)
+{
+  unsigned char extnr;   // 0:Master, 1:Extension
+  unsigned int value;
+
+  PyObject * res;
+
+  if (!PyArg_ParseTuple(args, "B", &extnr))
+    return NULL;
+  if (isInitialized == 0) {
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+
+  value = (pTArea + extnr)->sTxtInputs.u16TxtTemp;
+
+  res = Py_BuildValue("I", value);
+  return res;
 }
 
 
