@@ -25,7 +25,7 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2021 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.95"
+__version__     = "1.96"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
@@ -327,7 +327,7 @@ class ftTXT(object):
       # TODO
       # not sure how to detect version yet, just set standard value
       self._m_devicename = 'TXT TransferAreaMode'
-      self._m_version    =  0x4060600
+      self._m_version    = 0x4060600
       self._m_firmware   = 'firmware version not detected'
       return self._m_devicename, self._m_version
     elif self._directmode:
@@ -1576,7 +1576,7 @@ class ftTXT(object):
     """
     return self._port
   
-  def getPower(self):
+  def getPower(self, ext=C_EXT_MASTER):
     """
     Liefert die aktuelle Spannung der angeschlossenen Stromversorgung des TXT in mV (Netzteil- oder Batterie-Spannung).
     
@@ -1589,13 +1589,15 @@ class ftTXT(object):
     >>>   print("Warnung: die Batteriespannung des TXT ist schwach. Bitte die Batterie umgehend austauschen !")
     
     """
-    if self._directmode:
+    if self._use_TransferMode:
+      return ftTA2py.TxtPowerSupply(ext)
+    elif self._directmode:
       return self._current_power
     else:
       print("Diese Funktion steht nur im 'direct'-Modus zur Verfuegung.")
       return None
 
-  def getTemperature(self):
+  def getTemperature(self, ext=C_EXT_MASTER):
     """
     Liefert die aktuelle Temperatur der CPU des TXT (Einheit: ?) zurueck.
     
@@ -1607,6 +1609,8 @@ class ftTXT(object):
     >>> print("Die Temperatur im innern des TXT betraegt: ", Temperatur, " (Einheit unbekannt)")
     
     """
+    if self._use_TransferMode:
+      return ftTA2py.TxtCPUTemperature(ext)
     if self._directmode:
       return self._current_temperature
     else:
