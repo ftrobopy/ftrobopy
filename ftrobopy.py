@@ -25,11 +25,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2021 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.96"
+__version__     = "1.97"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "beta"
-__date__        = "01/25/2021"
+__date__        = "07/04/2021"
 
 try:
   xrange
@@ -175,6 +175,9 @@ class ftTXT(object):
         print("Error: Transfer Area could not be initialized! Please check if ftTA2py.so exists.")
         sys.exit(-1)
     elif self._directmode:
+      if use_extension:
+        print("Error: direct-mode does currently not support TXT slave extensions.")
+        sys.exit(-1)
       import serial
       self._ser_ms     = serial.Serial(self._ser_port, 230000, timeout=1)
       self._sock       = None
@@ -296,6 +299,7 @@ class ftTXT(object):
     self._current_reference_power = 0
     self._current_extension_power = 0
     self._debug                   = []
+    self._firstUpdateConfig       = [True, True]
     self._exchange_data_lock.release() 
 
   def stopTransferArea(self):
@@ -593,6 +597,9 @@ class ftTXT(object):
       if response_id != m_resp_id:
         self.handle_error('WARNING: ResponseID %s of startOnline command does not match' % hex(response_id), None)
       else:
+        self.updateConfig(self.C_EXT_MASTER)
+        if self._use_extension:
+          self.updateConfig(self.C_EXT_SLAVE)
         self._txt_thread = ftTXTexchange(txt=self, sleep_between_updates=update_interval, stop_event=self._txt_stop_event)
         self._txt_thread.setDaemon(True)
         self._txt_thread.start()
@@ -748,9 +755,11 @@ class ftTXT(object):
     if self._directmode:
       # in direct mode i/o port configuration is performed automatically in exchangeData thread
       return
-    if not self.isOnline():
-      self.handle_error("Controller must be online before updateConfig() is called", None)
-      return
+    if not self._firstUpdateConfig[ext]:
+      if not self.isOnline():
+        self.handle_error("Controller must be online before updateConfig() is called", None)
+        return
+      self._firstUpdateConfig[ext] = False
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id[ext] += 1
@@ -1962,7 +1971,8 @@ class ftTXTexchange(threading.Thread):
     self._previous_response = [0 for i in range(84)]
     self._previous_crc = self._crc0
     self._recv_crc0 = 0x628ebb05
-    self._previous_recv_crc = self._recv_crc0
+    self._recv_crc = self._recv_crc0
+    self._prev_recv_crc = self._recv_crc
     return
   
   def run(self):
@@ -2350,6 +2360,7 @@ class ftTXTexchange(threading.Thread):
             # for now use same sound as for MASTER
             uncbuf += [self._txt._sound[1], self._txt._sound_index[1], self._txt._sound_repeat[1]]
             self._txt._exchange_data_lock.release()
+            #print(uncbuf)
             # compress buffer
             self.compBuffer.Reset()
             for i in range(len(uncbuf)):
@@ -2396,70 +2407,54 @@ class ftTXTexchange(threading.Thread):
             return
           #print("retbuf=",','.join(format(ord(x),'4d') for x in retbuf))
           # head of response is uncompressed
-          resphead    = struct.unpack('<IIIHH', retbuf[:16])
-          response_id = resphead[0]
-          extra_size  = resphead[1] # size of compressed data
-          m_crc       = resphead[2] # CRC32 checksum of compressed data
-          nr_ext      = resphead[3] # number of active extensions
-          dmy_align   = resphead[4] # dummy align
+          self._prev_recv_crc = self._recv_crc # save previous checksum 
+          resphead       = struct.unpack('<IIIHH', retbuf[:16])
+          response_id    = resphead[0]
+          extra_size     = resphead[1] # size of compressed data
+          self._recv_crc = resphead[2] # CRC32 checksum of compressed data
+          nr_ext         = resphead[3] # number of active extensions
+          #dmy_align      = resphead[4] # dummy align
           if response_id != m_resp_id:
             print('ResponseID ', hex(response_id),' of exchangeData command in exchange thread does not match')
             print('Connection to TXT aborted')
             self._txt_stop_event.set()
             return
-          if self._previous_recv_crc != m_crc:
+          #response=[response_id]
+          if self._prev_recv_crc != self._recv_crc:
             # uncompress body of response
-            self._previous_recv_crc = m_crc
             self.compBuffer.Reset()
             self.compBuffer.m_compressed=retbuf[16:]
-            response=[response_id]
-            #print("unpacked:",response[1:])
+            response = map(lambda x: self.compBuffer.GetWord(), range(77))
+            #print(self._recv_crc, response)
             self._txt._exchange_data_lock.acquire()
-            for i in range(80):
-              d = self.compBuffer.GetWord()
-              if d != 0:
-                if (d == 1) and (self._previous_response[i+1] != 0):
-                  d = 0
-                # MASTER
-                if   i<8:
-                  self._txt._current_input[i] = d
-                elif i<12:
-                  self._txt._current_counter[i-8] = d
-                elif i<16:
-                  self._txt._current_counter_value[i-12] = d
-                elif i<20:
-                  self._txt._current_counter_cmd_id[i-16] = d
-                elif i<24:
-                  self._txt._current_motor_cmd_id[i-20] = d
-                elif i<25:
-                  self._txt._current_sound_cmd_id[0] = d
-                elif i<52:
-                  self._txt._current_ir[i-25] = d
-                # EXTENSION
-                elif i<60:
-                  self._txt._current_input[i-44] = d
-                elif i<64:
-                  self._txt._current_counter[i-56] = d
-                elif i<68:
-                  self._txt._current_counter_value[i-60] = d
-                elif i<72:
-                  self._txt._current_counter_cmd_id[i-64] = d
-                elif i<76:
-                  self._txt._current_motor_cmd_id[i-68] = d
-                elif i<77:
-                  self._txt._current_sound_cmd_id[1] = d
-                else:
-                  pass # extension does not provide ir input data
-                  
-              response.append(d)
-              
-            self._previous_response = response[:]
-              
+
+            def conv_null(a,b):
+              return [a[i] if b[i]==0 else 0 if (b[i]==1 and a[i]==1) else 1 if (b[i]==1 and a[i]==0) else b[i] for i in range(len(b))]
+
+
+            # MASTER
+            self._txt._current_input[:8]          = conv_null(self._txt._current_input[:8], response[:8])
+            self._txt._current_counter[:4]        = conv_null(self._txt._current_counter[:4], response[8:12])
+            self._txt._current_counter_value[:4]  = conv_null(self._txt._current_counter_value[:4], response[12:16])
+            self._txt._current_counter_cmd_id[:4] = conv_null(self._txt._current_counter_cmd_id[:4], response[16:20])
+            self._txt._current_motor_cmd_id[:4]   = conv_null(self._txt._current_motor_cmd_id[:4], response[20:24])
+            self._txt._current_sound_cmd_id[0]    = conv_null([self._txt._current_sound_cmd_id[0]], [response[24]])[0]
+            #self._txt._current_ir[:26]            = conv_null(self._txt._current_ir[:26], response[25:52])
+            # EXTENSION
+            self._txt._current_input[8:]          = conv_null(self._txt._current_input[8:], response[52:60])
+            self._txt._current_counter[4:]        = conv_null(self._txt._current_counter[4:], response[60:64])
+            self._txt._current_counter_value[4:]  = conv_null(self._txt._current_counter_value[4:], response[64:68])
+            self._txt._current_counter_cmd_id[4:] = conv_null(self._txt._current_counter_cmd_id[4:], response[68:72])
+            self._txt._current_motor_cmd_id[4:]   = conv_null(self._txt._current_motor_cmd_id[4:], response[72:76])
+            #self._txt._current_sound_cmd_id[1]    = conv_null([self._txt._current_sound_cmd_id[1]], [response[76]])
+            # last 3 are not used
+            #dummy                             = response[77:80]
+
             self._txt.handle_data(self._txt)
             self._txt._exchange_data_lock.release()
             #end_time=time.time()
             #print("time=",end_time-start_time)
-
+          
         else:
           m_id          = 0xCC3597BA
           m_resp_id     = 0x4EEFAC41
@@ -2813,9 +2808,9 @@ class ftrobopy(ftTXT):
     for i in range(n):
       self.setPwm(i,0)
     self.startOnline(update_interval)
-    self.updateConfig(ftTXT.C_EXT_MASTER)
-    if (use_extension):
-      self.updateConfig(ftTXT.C_EXT_SLAVE)
+    #self.updateConfig(ftTXT.C_EXT_MASTER)
+    #if (use_extension):
+    #  self.updateConfig(ftTXT.C_EXT_SLAVE)
 
   def __del__(self):
     if self._txt_is_initialized:
