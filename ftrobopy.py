@@ -2424,7 +2424,7 @@ class ftTXTexchange(threading.Thread):
             # uncompress body of response
             self.compBuffer.Reset()
             self.compBuffer.m_compressed=retbuf[16:]
-            response = map(lambda x: self.compBuffer.GetWord(), range(77))
+            response = list(map(lambda x: self.compBuffer.GetWord(), range(77)))
             #print(self._recv_crc, response)
             self._txt._exchange_data_lock.acquire()
 
