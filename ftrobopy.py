@@ -25,11 +25,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2021 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.97"
+__version__     = "1.98"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
-__status__      = "beta"
-__date__        = "07/04/2021"
+__status__      = "stable"
+__date__        = "11/17/2021"
 
 try:
   xrange
@@ -140,6 +140,15 @@ class ftTXT(object):
 
       :param on_error: Errorhandler fuer Fehler bei der Kommunikation mit dem Controller (optional)
       :type port: function(str, Exception) -> bool
+
+      :param directmode: Default: False. Direkte serielle Kommunikation zwischen TXT Linux-Platine und Motorplatine unter Umgehung der Socket-Schnittstelle (nur sinnvoll in der CFW im offline Modus)
+      :type boolean:
+
+      :param use_extension: Default: False. Erlaubt einen zweiten TXT-Kontroller am Extension Port.
+      :type boolean:
+
+      :param use_TransferAreaMode: Default False. Verwendet eine shared-Memory Methode (TransferAreaMode) zum Datenaustausch mit der Motorplatine (nur sinnvoll im Offline Modus)
+      :type boolean:
 
 
       :return: Leer
@@ -1674,7 +1683,7 @@ class ftTXT(object):
       >>> lampe1.setLevel(512)
       >>> SyncDataEnd()
     """
-    if self._use_TransferArea:
+    if self._use_TransferAreaMode:
       return
     self._exchange_data_lock.acquire()
 
@@ -1684,7 +1693,7 @@ class ftTXT(object):
 
       Anwendungsbeispiel siehe SyncDataBegin()
     """
-    if self._use_TransferArea:
+    if self._use_TransferAreaMode:
       return
     self._exchange_data_lock.release()
 
@@ -2715,6 +2724,14 @@ class ftrobopy(ftTXT):
 
       :param special_connection: IP-Adresse des TXT, falls dieser ueber einen Router im WLAN-Netz angesprochen wird (z.B. '10.0.2.7')
       :type special_connection: string
+
+      :param use_extension: Default: False. Erlaubt einen zweiten TXT-Kontroller am Extension Port.
+      :type boolean:
+
+      :param use_TransferAreaMode: Default False. Verwendet eine shared-Memory Methode (TransferAreaMode) zum Datenaustausch mit der Motorplatine (nur sinnvoll im Offline Modus)
+      :type boolean:
+
+
 
       :return: Leer
       
