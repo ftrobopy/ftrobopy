@@ -1674,7 +1674,7 @@ class ftTXT(object):
       >>> lampe1.setLevel(512)
       >>> SyncDataEnd()
     """
-    if self._use_TransferArea:
+    if self._use_TransferAreaMode:
       return
     self._exchange_data_lock.acquire()
 
@@ -1684,7 +1684,7 @@ class ftTXT(object):
 
       Anwendungsbeispiel siehe SyncDataBegin()
     """
-    if self._use_TransferArea:
+    if self._use_TransferAreaMode:
       return
     self._exchange_data_lock.release()
 
