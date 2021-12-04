@@ -12,13 +12,13 @@ txt.updateWait()
 m2.setDistance(0, sn=5)
 txt.updateWait()
 
-m1.setSpeed(50)
-m2.setSpeed(50)
+m1.setSpeed(450)
+m2.setSpeed(-450)
 
 txt.updateWait()
 count = 1
-inject = 25
-inject_delta = 25
+inject = 12
+inject_delta = inject
 syncerror = 5
 flip = True
 while not m1.finished() or not m2.finished():
@@ -75,7 +75,7 @@ while not m1.finished() or not m2.finished():
       print('0')
     inject += inject_delta
 
-  print(f'{count:6d} {c1:6d} {c2:6d}','.'* abs(c1-c2), f'({c1-c2})')
+  #print(f'{count:6d} {c1:6d} {c2:6d}','.'* abs(c1-c2), f'({c1-c2})')
   count += 1
 
 print('m1 and m2 finished')
