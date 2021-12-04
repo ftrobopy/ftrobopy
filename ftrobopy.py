@@ -25,11 +25,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2021 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "1.98"
+__version__     = "1.99"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "stable"
-__date__        = "11/17/2021"
+__date__        = "12/04/2021"
 
 try:
   xrange
@@ -2886,17 +2886,25 @@ class ftrobopy(ftTXT):
 
       Laesst den Motor mit maximaler Umdrehungsgeschwindigkeit laufen.
 
-      **setDistance** (distance, syncto=None)
+      **setDistance** (distance, syncto=None, sn=None)
       
       Einstellung der Motordistanz, die ueber die schnellen Counter gemessen wird, die dafuer natuerlich angeschlossen
       sein muessen.
       
-      :param distance: Gibt an, um wieviele Counter-Zaehlungen sich der Motor drehen soll (der Encodermotor gibt 72 Impulse pro Achsumdrehung)
+      :param distance: Gibt an, um wieviele Counter-Zaehlungen sich der Motor drehen soll.
+                       (Der Encodermotor des TXTs gibt 190 Impulse pro 3 Achsumdrehungen, also 63 1/3 pro Umlauf)
+                       (Der Encodermotor des TX gibt 72 Impulse pro Umlauf)
       :type distance: integer
       
       :param syncto: Hiermit koennen zwei Motoren synchronisiert werden um z.B. perfekten Geradeauslauf
                      zu ermoeglichen. Als Parameter wird hier das zu synchronisierende Motorobjekt uebergeben.
       :type syncto: ftrobopy.motor Objekt
+      
+      :param sn: Um mit synchronisierten Motoren Kurven fahren zu koennen, ist es mit diesem Parameter moeglich,
+                 einen Counter (waehrend der Synchronfahrt) gezielt zu manipulieren.
+                 Als Parameter wird hier die Nummer des synchronisierten Motoreingangs uebergeben.
+                 Der Wert des Distanz-Parameters wird in diesem Fall auf den Counter aufaddiert (oder subtrahiert, je nach Vorzeichen)
+      :type sn: integer
       
       :return: Leer
       
@@ -2961,7 +2969,7 @@ class ftrobopy(ftTXT):
           self._outer.setPwm((self._output-1)*2, 0, self._ext)
           self._outer.setPwm((self._output-1)*2+1, -self._speed, self._ext)
         self._outer._exchange_data_lock.release()
-      def setDistance(self, distance, syncto=None):
+      def setDistance(self, distance, syncto=None, sn=None):
         self._outer._exchange_data_lock.acquire()
         if syncto:
           self._distance     = distance
@@ -2974,6 +2982,12 @@ class ftrobopy(ftTXT):
           self._outer.setMotorSyncMaster(syncto._output-1, 4*self._ext + self._output, self._ext)
           self._outer.incrMotorCmdId(self._output-1, self._ext)
           self._outer.incrMotorCmdId(syncto._output-1, self._ext)
+        elif sn:
+          self._distance     = distance
+          self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1, self._ext)
+          self._outer.setMotorDistance(self._output-1, distance, self._ext)
+          self._outer.setMotorSyncMaster(self._output-1, sn, self._ext)
+          self._outer.incrMotorCmdId(self._output-1, self._ext)
         else:
           self._distance     = distance
           self._command_id   = self._outer.getCurrentMotorCmdId(self._output-1, self._ext)
