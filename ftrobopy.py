@@ -796,7 +796,7 @@ class ftTXT(object):
       self._txt_keep_connection_stop_event.set()
     return None
 
-  def startCameraOnline(self):
+  def startCameraOnline(self, width=320, height=240, fps=15):
     """
       Startet den Prozess auf dem TXT, der das aktuelle Camerabild ueber Port 65001 ausgibt und startet einen Python-Thread,
       der die Cameraframes kontinuierlich vom TXT abholt. Die Frames werden vom TXT im jpeg-Format angeliefert.
@@ -828,9 +828,9 @@ class ftTXT(object):
     if self._camera_thread is None:
       m_id                  = 0x882A40A6
       m_resp_id             = 0xCF41B24E
-      self._m_width         = 320
-      self._m_height        = 240
-      self._m_framerate     = 15
+      self._m_width         = width
+      self._m_height        = height
+      self._m_framerate     = fps
       self._m_powerlinefreq = 0 # 0=auto, 1=50Hz, 2=60Hz
       buf        = struct.pack('<I4i', m_id,
                                      self._m_width,
@@ -909,7 +909,7 @@ class ftTXT(object):
         if frame != None:
           if len(frame) == 0:
             frame = None
-        if count > 20:
+        if count > 100:
           print('Timeout while getting new frame from camera')
           return None
         time.sleep(0.01)
