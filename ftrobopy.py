@@ -2,7 +2,7 @@
 **************************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 **************************************************************************
-(c) 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023 by Torsten Stuehn
+(c) 2015 - 2025 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -22,14 +22,14 @@ except:
   pass
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015 - 2023 by Torsten Stuehn"
+__copyright__   = "Copyright 2015 - 2025 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "2.0.0"
+__version__     = "2.0.2"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "stable"
-__date__        = "06/15/2023"
+__date__        = "08/08/2025"
 
 try:
   xrange
@@ -941,6 +941,8 @@ class ftTXT(object):
     """
     if self._use_TransferAreaMode:
       ftTA2py.fX1out_incr_motor_cmd_id(ext,idx)
+      self._motor_cmd_id[4*ext+idx] += 1
+      self._motor_cmd_id[4*ext+idx] &= 0x07
     else:
       self._exchange_data_lock.acquire()
       self._motor_cmd_id[4*ext+idx] += 1
@@ -963,16 +965,16 @@ class ftTXT(object):
 
       >>> letzte_cmd_id = txt.getMotorCmdId(4)
     """
-    if self._use_TransferAreaMode:
-      if idx != None:
-        ret=ftTA2py.fX1in_motor_ex_cmd_id(ext,idx)
-      else:
-        ret=[ftTA2py.fX1in_motor_ex_cmd_id(ext,0), ftTA2py.fX1in_motor_ex_cmd_id(ext,1), ftTA2py.fX1in_motor_ex_cmd_id(ext,2), ftTA2py.fX1in_motor_ex_cmd_id(ext,3)]
+    #if self._use_TransferAreaMode:
+    #  if idx != None:
+    #    ret=ftTA2py.fX1in_motor_ex_cmd_id(ext,idx)
+    #  else:
+    #    ret=[ftTA2py.fX1in_motor_ex_cmd_id(ext,0), ftTA2py.fX1in_motor_ex_cmd_id(ext,1), ftTA2py.fX1in_motor_ex_cmd_id(ext,2), ftTA2py.fX1in_motor_ex_cmd_id(ext,3)]
+    #else:
+    if idx != None:
+      ret=self._motor_cmd_id[4*ext+idx]
     else:
-      if idx != None:
-        ret=self._motor_cmd_id[4*ext+idx]
-      else:
-        ret=self._motor_cmd_id[4*ext:4*ext+4]
+      ret=self._motor_cmd_id[4*ext:4*ext+4]
     return ret
 
   def cameraOnline(self):
@@ -2285,17 +2287,14 @@ class ftTXTexchange(threading.Thread):
         b1 = response[35]
         b2 = response[36]
         self._txt._debug = [b0, b1, b2]
-        # get pointers to current counter and motor cmd id data structures
-        cC = self._txt.getCurrentCounterCmdId()
-        cM = self._txt.getCurrentMotorCmdId()
-        cC[0] = b0 & 0x07
-        cC[1] = (b0 >> 3) & 0x07
-        cC[2] = (b0 >> 6) & 0x03 | (b1 << 2) & 0x04
-        cC[3] = (b1 >> 1) & 0x07
-        cM[0] = (b1 >> 4) & 0x07
-        cM[1] = (b1 >> 7) & 0x01 | (b2 << 1) & 0x06
-        cM[2] = (b2 >> 2) & 0x07
-        cM[3] = (b2 >> 5) & 0x07
+        self._txt._current_counter_cmd_id[0] = b0 & 0x07
+        self._txt._current_counter_cmd_id[1] = (b0 >> 3) & 0x07
+        self._txt._current_counter_cmd_id[2] = (b0 >> 6) & 0x03 | (b1 << 2) & 0x04
+        self._txt._current_counter_cmd_id[3] = (b1 >> 1) & 0x07
+        self._txt._current_motor_cmd_id[0] = (b1 >> 4) & 0x07
+        self._txt._current_motor_cmd_id[1] = (b1 >> 7) & 0x01 | (b2 << 1) & 0x06
+        self._txt._current_motor_cmd_id[2] = (b2 >> 2) & 0x07
+        self._txt._current_motor_cmd_id[3] = (b2 >> 5) & 0x07
         
         self._txt._update_status = 1
         self._txt._exchange_data_lock.release()
@@ -3406,7 +3405,7 @@ class ftrobopy(ftTXT):
       >>> joystickRechts     = ftrob.joystick(1)       # rechter Joystick aller 4 moeglichen IR-Fernbedienungen
       >>> joystickNummer3    = ftrob.joystick(0, 2)    # linker Joystick der IR-Fernbedienung Nummer 2 (Dip-Switch: ON OFF)
       >>> joystickBlauLinks  = ftrob.joystick(0, 0, 1) # linker Joystick der BT-Fernbedienung
-      >>> joystickBlauRechts = ftrob.joystick(0, 0, 1) # linker Joystick der BT-Fernbedienung
+      >>> joystickBlauRechts = ftrob.joystick(1, 0, 1) # rechter Joystick der BT-Fernbedienung
     
       Das so erzeugte Joystick-Objekt hat folgende Methoden:
 
