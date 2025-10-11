@@ -193,7 +193,7 @@ class ftTXT(object):
       import spidev
       try:
         self._spi      = spidev.SpiDev(1,0) # /dev/spidev1.0
-      except error:
+      except:
         print("Error opening SPI device (this is needed for sound in 'direct'-mode).")
         # print(error)
         self._spi      = None
