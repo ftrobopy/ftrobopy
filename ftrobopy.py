@@ -2,7 +2,7 @@
 **************************************************************************
 **ftrobopy** - Ansteuerung des fischertechnik TXT Controllers in Python
 **************************************************************************
-(c) 2015 - 2025 by Torsten Stuehn
+(c) 2015 - 2026 by Torsten Stuehn
 """
 
 from __future__ import print_function
@@ -22,14 +22,14 @@ except:
   pass
 
 __author__      = "Torsten Stuehn"
-__copyright__   = "Copyright 2015 - 2025 by Torsten Stuehn"
+__copyright__   = "Copyright 2015 - 2026 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "2.0.2"
+__version__     = "2.0.5"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "stable"
-__date__        = "08/08/2025"
+__date__        = "04/20/2026"
 
 try:
   xrange
@@ -193,8 +193,8 @@ class ftTXT(object):
       import spidev
       try:
         self._spi      = spidev.SpiDev(1,0) # /dev/spidev1.0
-      except error:
-        print("Error opening SPI device (this is needed for sound in 'direct'-mode).")
+      except: #error:
+        # print("Error opening SPI device (this is needed for sound in 'direct'-mode).")
         # print(error)
         self._spi      = None
       if self._spi:
@@ -477,17 +477,17 @@ class ftTXT(object):
     for i in argv:
       buf += struct.pack('B', i)
 
-    if debug:
-      print("i2c_write, sendbuffer: ", end='')
-      for k in buf: print(format(int(k), '02X'), end=' ')
-      print()
+    #if debug:
+    #  print("i2c_write, sendbuffer: ", end='')
+    #  for k in buf: print(format(int(k), '02X'), end=' ')
+    #  print()
     res = self._i2c_sock.send(buf)
     data = self._i2c_sock.recv(512)
 
-    if debug:
-      print("i2c_write, receivebuffer: ", end='')
-      for k in data: print(format(int(k), '02X'), end=' ')
-      print()
+    #if debug:
+    #  print("i2c_write, receivebuffer: ", end='')
+    #  for k in data: print(format(int(k), '02X'), end=' ')
+    #  print()
     fstr = '>III'
     response_id = 0
     if len(data) == struct.calcsize(fstr):
@@ -3050,7 +3050,7 @@ class ftrobopy(ftTXT):
       def setLevel(self, level):
         self._level=level
         self._outer._exchange_data_lock.acquire()
-        self._outer.setPwm(num-1, self._level, self._ext)
+        self._outer.setPwm(self._num-1, self._level, self._ext)
         self._outer._exchange_data_lock.release()
     
     M, I = self.getConfig(ext)
@@ -3092,7 +3092,7 @@ class ftrobopy(ftTXT):
         self._num=num
         self._ext=ext
       def state(self):
-        return self._outer.getCurrentInput(num-1, self._ext)
+        return self._outer.getCurrentInput(self._num-1, self._ext)
 
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_SWITCH, ftTXT.C_DIGITAL)
@@ -3145,7 +3145,7 @@ class ftrobopy(ftTXT):
         self._num=num
         self._ext=ext
       def value(self):
-        return self._outer.getCurrentInput(num-1, self._ext)
+        return self._outer.getCurrentInput(self._num-1, self._ext)
       def ntcTemperature(self):
         r = self.value()
         if r != 0:
@@ -3198,7 +3198,7 @@ class ftrobopy(ftTXT):
         self._num=num
         self._ext=ext
       def distance(self):
-        return self._outer.getCurrentInput(num-1, self._ext)
+        return self._outer.getCurrentInput(self._num-1, self._ext)
     
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_ULTRASONIC, ftTXT.C_ANALOG)
@@ -3240,7 +3240,7 @@ class ftrobopy(ftTXT):
         self._num=num
         self._ext=ext
       def voltage(self):
-        return self._outer.getCurrentInput(num-1, self._ext)
+        return self._outer.getCurrentInput(self._num-1, self._ext)
     
     M, I = self.getConfig(ext)
     I[num-1]= (ftTXT.C_VOLTAGE, ftTXT.C_ANALOG)
@@ -3294,9 +3294,9 @@ class ftrobopy(ftTXT):
         self._num=num
         self._ext=ext
       def value(self):
-        return self._outer.getCurrentInput(num-1, self._ext)
+        return self._outer.getCurrentInput(self._num-1, self._ext)
       def color(self):
-        c = self._outer.getCurrentInput(num-1, self._ext)
+        c = self._outer.getCurrentInput(self._num-1, self._ext)
         if c < 200:
           return 'weiss'
         elif c < 1000:
@@ -3347,10 +3347,10 @@ class ftrobopy(ftTXT):
         self._num=num
         self._ext=ext
       def state(self):
-        if self._outer.getCurrentInput(num-1, self._ext) == 1: # in direct-mode digital 1 is set by motor-shield if voltage is > 600mV
+        if self._outer.getCurrentInput(self._num-1, self._ext) == 1: # in direct-mode digital 1 is set by motor-shield if voltage is > 600mV
          return 1
         else:
-          if self._outer.getCurrentInput(num-1, self._ext) > 600: # threshold in mV between digital 0 and 1. Use voltage()-Function instead, if analog value of trailfollower is needed.
+          if self._outer.getCurrentInput(self._num-1, self._ext) > 600: # threshold in mV between digital 0 and 1. Use voltage()-Function instead, if analog value of trailfollower is needed.
             return 1
           else:
             return 0
@@ -3571,14 +3571,14 @@ class ftrobopy(ftTXT):
         self._remote_number=remote_number
         self._remote_type=remote_type
       def pressed(self):
-        if remote_type==0: # IR remote
-          if buttonnum==0: # left button (ON) on remote
-            if self._outer._ir_current_buttons[remote_number] == 1:
+        if self._remote_type==0: # IR remote
+          if self._buttonnum==0: # left button (ON) on remote
+            if self._outer._ir_current_buttons[self._remote_number] == 1:
               return True
             else:
               return False
           else: # right button (OFF) on remote
-            if (self._outer._ir_current_buttons[remote_number]) >> 1 == 1:
+            if (self._outer._ir_current_buttons[self._remote_number]) >> 1 == 1:
               return True
             else:
               return False
@@ -3624,7 +3624,7 @@ class ftrobopy(ftTXT):
         self._outer=outer
         self._remote_type=remote_type
       def setting(self):
-        if remote_type==0: # IR remote
+        if self._remote_type==0: # IR remote
           return self._outer._ir_current_dip_switch[0]
         else: # BT remote has no dip switches
           return 0
