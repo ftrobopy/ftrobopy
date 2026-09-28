@@ -25,11 +25,11 @@ __author__      = "Torsten Stuehn"
 __copyright__   = "Copyright 2015 - 2026 by Torsten Stuehn"
 __credits__     = "fischertechnik GmbH"
 __license__     = "MIT License"
-__version__     = "2.0.5"
+__version__     = "2.0.6"
 __maintainer__  = "Torsten Stuehn"
 __email__       = "stuehn@mailbox.org"
 __status__      = "stable"
-__date__        = "04/20/2026"
+__date__        = "09/28/2026"
 
 try:
   xrange
@@ -703,6 +703,8 @@ class ftTXT(object):
        >>> txt.updateConfig()
     """
     self._config_id[ext] += 1
+    if (self._config_id[ext] > 32767):
+      self._config_id[ext] = 0
     # Configuration of motors
     # 0=single output O1/O2
     # 1=motor output M1
@@ -772,6 +774,8 @@ class ftTXT(object):
     m_id       = 0x060EF27E
     m_resp_id  = 0x9689A68C
     self._config_id[ext] += 1
+    if (self._config_id[ext] > 32767):
+      self._config_id[ext] = 0
     fields = [m_id, self._config_id[ext], ext]
     fields.append(self._ftX1_pgm_state_req)
     fields.append(self._ftX1_old_FtTransfer)
